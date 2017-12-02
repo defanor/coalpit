@@ -20,12 +20,12 @@ executable coalpit-example
   -- other-modules:       
   other-extensions:    TemplateHaskell
   build-depends:       base >=4.9 && <4.10
-                     , template-haskell >=2.11 && <2.12
+                     , megaparsec >= 6.2.0
   default-language:    Haskell2010
 
 library
   exposed-modules:     Coalpit
   other-extensions:    TemplateHaskell, FlexibleInstances
   build-depends:       base >=4.9 && <4.10
-                     , template-haskell >=2.11 && <2.12
+                     , megaparsec >= 6.2.0
   default-language:    Haskell2010

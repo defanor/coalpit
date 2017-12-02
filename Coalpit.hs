@@ -1,88 +1,106 @@
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Coalpit where
 
-import Language.Haskell.TH
-import Data.Char
 import Data.List
+import GHC.Generics
+import Text.Megaparsec
+import Text.Megaparsec.Char
 
+type Parser = Parsec String String
 
-class Args a where
+args :: ToArgs a => a -> String
+args = intercalate " " . toArgs
+
+class ArgParser a where
+  argParser :: Parser a
+  default argParser :: (Generic a, GArgParser (Rep a)) => Parser a
+  argParser = to <$> gArgParser
+
+class GArgParser f where
+  gArgParser :: Parser (f a)
+
+class ToArgs a where
   toArgs :: a -> [String]
-  fromArgs :: [String] -> (a, [String])
+  default toArgs :: (Generic a, GToArgs (Rep a)) => a -> [String]
+  toArgs a = gToArgs (from a)
 
-instance {-#OVERLAPPING#-} Args String where
-  toArgs = pure . show
-  fromArgs (x:xs) = (read x, xs)
+class GToArgs f where
+  gToArgs :: f a -> [String]
 
-instance Args Int where
-  toArgs = pure . show
-  fromArgs (x:xs) = (read x, xs)
 
-instance Args Bool where
-  toArgs True = ["t"]
-  toArgs False = ["f"]
-  fromArgs ("t":xs) = (True, xs)
-  fromArgs ("f":xs) = (False, xs)
+instance GArgParser U1 where
+  gArgParser = pure U1
 
-instance Args a => Args (Maybe a) where
-  toArgs Nothing = ["n"]
-  toArgs (Just x) = "j" : toArgs x
-  fromArgs ("n":xs) = (Nothing, xs)
-  fromArgs ("j":xs) = let (y, ys) = fromArgs xs in (Just y, ys)
+instance GToArgs U1 where
+  gToArgs U1 = []
 
-instance Args a => Args [a] where
-  toArgs = pure . intercalate "," . concatMap toArgs
-  fromArgs (arg:args) = (map (fst . fromArgs . pure) $ splitOn ',' arg, args)
+instance (GArgParser a, GArgParser b) => GArgParser (a :*: b) where
+  gArgParser = (:*:) <$> gArgParser <* space <*> gArgParser
 
-splitOn :: Eq a => a -> [a] -> [[a]]
-splitOn sep l = case break (== sep) l of
-  (x, []) -> [x]
-  (x, _:xs) -> x : splitOn sep xs
+instance (GToArgs a, GToArgs b) => GToArgs (a :*: b) where
+  gToArgs (a :*: b) = gToArgs a ++ gToArgs b
 
-printCon :: Name -> String
-printCon = map toLower . reverse . takeWhile (/= '.') . reverse . show
+instance (GArgParser a, GArgParser b) => GArgParser (a :+: b) where
+  gArgParser = L1 <$> gArgParser <|> R1 <$> gArgParser
 
-printClause :: Con -> Q Clause
-printClause (NormalC cn bts) = do
-  let ts = map snd bts
-      vars = (map (mkName . ("x_" ++) . show) [1..length ts])
-      args = map (\v -> AppE (VarE 'toArgs) (VarE v)) vars
-  pure $ Clause [ConP cn (map VarP vars)]
-    (NormalB (AppE (VarE 'concat) $ ListE
-               (ListE [LitE (StringL $ printCon cn)] : args)))
-    []
+instance (GToArgs a, GToArgs b) => GToArgs (a :+: b) where
+  gToArgs c@(L1 x) = gToArgs x
+  gToArgs c@(R1 x) = gToArgs x
 
-parseClause :: Con -> Q Clause
-parseClause (NormalC cn bts) = do
-  let ts = map snd bts
-      vars = map (mkName . ("x_" ++) . show) [1..length ts]
-      vals = map (\x -> mkName (show x ++ "_val")) vars
-      fin = (TupE [foldl AppE (ConE cn) (map VarE vals)
-                   , VarE (mkName $ (if length vars > 0
-                                     then show (last vars)
-                                     else "xs") ++ "_rest")
-                   ])
-  pure $ Clause [InfixP (LitP (StringL $ printCon cn))
-                 (mkName ":")
-                 (VarP (mkName "xs_rest"))]
-    (NormalB $ foldr parseArg fin (zip (mkName "xs" : vars) vars))
-    []
-  where
-    parseArg :: (Name, Name) -> Exp -> Exp
-    parseArg (np, nc) e = LetE
-      [ValD (TupP [VarP (mkName (show nc ++ "_val")),
-                    VarP (mkName (show nc ++ "_rest"))])
-        (NormalB $ AppE (VarE 'fromArgs) (VarE (mkName (show np ++ "_rest"))))
-        []]
-      e
+instance (GArgParser a, Selector c) => GArgParser (S1 c a) where
+  gArgParser = M1 <$> do
+    let sname = case selName (undefined :: S1 c a f) of
+          "" -> pure ()
+          name -> string ("--" ++ name) *> space
+    sname *> gArgParser
 
-deriveArgs :: Name -> Q [Dec]
-deriveArgs ty = do
-  let var = mkName "x"
-  (TyConI d@(DataD _ nm tyVars mk cs _)) <- reify ty
-  to <- mapM printClause cs
-  from <- mapM parseClause cs
-  pure [InstanceD Nothing [] (AppT (ConT ''Args) (ConT ty))
-        [FunD 'toArgs to, FunD 'fromArgs from]]
+-- record selectors
+instance (GToArgs a, Selector c) => GToArgs (S1 c a) where
+  gToArgs s@(M1 x) = case selName s of
+                         "" -> gToArgs x
+                         name -> ("--" ++ selName s) : gToArgs x
+
+instance (GArgParser a, Constructor c) => GArgParser (C1 c a) where
+  gArgParser = string (conName (undefined :: C1 c a f)) *> space *> (M1 <$> gArgParser)
+
+instance (GToArgs a, Constructor c) => GToArgs (C1 c a) where
+  gToArgs c@(M1 x) = conName c : gToArgs x
+
+
+instance (GArgParser a, Datatype c) => GArgParser (D1 c a) where
+  gArgParser = M1 <$> gArgParser
+
+instance (GToArgs a, Datatype c) => GToArgs (D1 c a) where
+  gToArgs d@(M1 x) = gToArgs x
+
+instance (ArgParser a) => GArgParser (K1 i a) where
+  gArgParser = K1 <$> argParser
+
+instance (ToArgs a) => GToArgs (K1 i a) where
+  gToArgs (K1 x) = toArgs x
+
+
+instance ArgParser Int where
+  argParser = read <$> some digitChar
+
+instance ToArgs Int where
+  toArgs i = [show i]
+
+instance ArgParser String where
+  argParser = char '"' *> manyTill anyChar (char '"')
+
+instance ToArgs String where
+  toArgs i = [show i]
+
+instance ArgParser Double where
+  argParser = read <$> some (digitChar <|> char '.')
+
+instance ToArgs Double where
+  toArgs i = [show i]
+

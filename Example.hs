@@ -1,27 +1,29 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Main where
 
+import GHC.Generics
+import Text.Megaparsec
 import Coalpit
-import Language.Haskell.TH
-import Data.List
 
-data Y = Foo Bool Int
-       | Bar Int
-       | Baz
-  deriving (Show)
+data RecTest = RecTest { a :: Int, b :: Double }
+             deriving (Generic, Show)
 
-data X = X String (Maybe Int) (Maybe [Int]) Y Y String
-  deriving (Show)
+instance ArgParser RecTest
+instance ToArgs RecTest
 
-$(deriveArgs ''Y)
-$(deriveArgs ''X)
+data Foo = Bar Int
+         | Baz Int
+         | Qux RecTest
+  deriving (Generic, Show)
+
+instance ToArgs Foo
+instance ArgParser Foo
 
 main :: IO ()
 main = do
-  let val = X "test" Nothing (Just [1,2,3]) (Foo True 1) Baz "end"
-      args = toArgs val
+  let val = Qux (RecTest 1 2.3)
+      a = args val
   print val
-  putStrLn $ intercalate " " args
-  print (fromArgs args :: (X, [String]))
-  print (fromArgs (args ++ ["additional", "args"]) :: (X, [String]))
+  putStrLn a
+  print $ parse (argParser :: Parser Foo) "test" a
