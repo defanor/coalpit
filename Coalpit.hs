@@ -11,6 +11,7 @@ import Data.List
 import GHC.Generics
 import Text.Megaparsec
 import Text.Megaparsec.Char
+import Data.Maybe
 
 type Parser = Parsec String String
 
@@ -53,6 +54,15 @@ instance (GToArgs a, GToArgs b) => GToArgs (a :+: b) where
   gToArgs c@(L1 x) = gToArgs x
   gToArgs c@(R1 x) = gToArgs x
 
+instance {-#OVERLAPPING#-}
+  (ArgParser a, Selector c) => GArgParser (S1 c (Rec0 (Maybe a))) where
+  gArgParser = do
+    case selName (undefined :: S1 c (Rec0 (Maybe a)) f) of
+           "" -> M1 <$> gArgParser
+           name -> do
+             x <- optional $ string ("--" ++ name) *> space *> argParser
+             pure $ M1 $ K1 x
+
 instance (GArgParser a, Selector c) => GArgParser (S1 c a) where
   gArgParser = M1 <$> do
     let sname = case selName (undefined :: S1 c a f) of
@@ -61,6 +71,13 @@ instance (GArgParser a, Selector c) => GArgParser (S1 c a) where
     sname *> gArgParser
 
 -- record selectors
+instance {-#OVERLAPPING#-}
+  (ToArgs a, Selector c) => GToArgs (S1 c (Rec0 (Maybe a))) where
+  gToArgs s@(M1 (K1 x)) = case (selName s, x) of
+                       ("", _) -> toArgs x
+                       (_, Nothing) -> []
+                       (name, Just x') -> ("--" ++ selName s) : toArgs x'
+
 instance (GToArgs a, Selector c) => GToArgs (S1 c a) where
   gToArgs s@(M1 x) = case selName s of
                          "" -> gToArgs x
@@ -104,3 +121,5 @@ instance ArgParser Double where
 instance ToArgs Double where
   toArgs i = [show i]
 
+instance ArgParser a => ArgParser (Maybe a)
+instance ToArgs a => ToArgs (Maybe a)
