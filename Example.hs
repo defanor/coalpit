@@ -6,7 +6,9 @@ import GHC.Generics
 import Text.Megaparsec
 import Coalpit
 
-data RecTest = RecTest { a :: Maybe Int, b :: Maybe Double, c :: Maybe Int }
+data RecTest = RecTest { a :: Maybe Int
+                       , b :: Maybe Double
+                       , c :: Maybe Int }
              deriving (Generic, Show)
 
 instance ArgParser RecTest
@@ -29,7 +31,7 @@ instance ToArgs Wrap
 main :: IO ()
 main = do
   let val = Wrap (Just $ Qux Nothing (Just 1) (RecTest Nothing (Just 2.3) Nothing) Nothing) (Just 1)
-      a = args val
+      a = args defMod val
   print val
   putStrLn a
-  print $ parse (argParser :: Parser Wrap) "test" a
+  print $ parse (argParser defMod :: Parser Wrap) "test" a
