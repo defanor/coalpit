@@ -16,7 +16,7 @@ instance ToArgs RecTest
 
 data Foo = Bar Int
          | Baz Int
-         | Qux (Maybe Int) (Maybe Int) RecTest (Maybe Double)
+         | Qux (Maybe Int) (Maybe String) RecTest (Maybe Double)
   deriving (Generic, Show)
 
 instance ArgParser Foo
@@ -30,8 +30,9 @@ instance ToArgs Wrap
 
 main :: IO ()
 main = do
-  let val = Wrap (Just $ Qux Nothing (Just 1) (RecTest Nothing (Just 2.3) Nothing) Nothing) (Just 1)
-      a = args defMod val
+  let val = Wrap (Just $ Qux Nothing (Just "foo bar")
+                  (RecTest Nothing (Just 2.3) Nothing) Nothing) (Just 1)
+      a = toArgs defMod val
   print val
-  putStrLn a
+  print a
   print $ parse (argParser defMod :: Parser Wrap) "test" a

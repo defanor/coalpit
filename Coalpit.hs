@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -13,11 +14,39 @@ import Text.Megaparsec
 import Text.Megaparsec.Char
 import Data.Maybe
 import Data.Char
+import Data.Proxy
+import Data.Semigroup
 
-type Parser = Parsec String String
 
-args :: ToArgs a => Modifiers -> a -> String
-args m = intercalate " " . toArgs m
+advance :: Pos -> SourcePos -> t -> SourcePos
+advance width (SourcePos n l c) t = SourcePos n l (c <> pos1)
+
+instance Stream [String] where
+  type Token [String] = String
+  type Tokens [String] = [String]
+  tokenToChunk Proxy = pure
+  tokensToChunk Proxy = id
+  chunkToTokens Proxy = id
+  chunkLength Proxy = length
+  chunkEmpty Proxy = null
+  advance1 Proxy = advance
+  advanceN Proxy w = foldl' (advance w)
+  take1_ [] = Nothing
+  take1_ (t:ts) = Just (t, ts)
+  takeN_ n s
+    | n <= 0    = Just ([], s)
+    | null s    = Nothing
+    | otherwise = Just (splitAt n s)
+  takeWhile_ = span
+
+type Parser = Parsec String [String]
+
+pS :: Parsec String String a -> Parsec String [String] a
+pS p = try $ do
+  x <- token Right Nothing
+  case parse p "argument" x of
+    Left e -> fail $ show e
+    Right x -> pure x
 
 
 data Modifiers = Modifiers { conNameMod :: String -> String
@@ -57,7 +86,7 @@ instance GToArgs U1 where
 -- Products
 
 instance (GArgParser a, GArgParser b) => GArgParser (a :*: b) where
-  gArgParser m = (:*:) <$> gArgParser m <* space <*> gArgParser m
+  gArgParser m = (:*:) <$> gArgParser m <*> gArgParser m
 
 instance (GToArgs a, GToArgs b) => GToArgs (a :*: b) where
   gToArgs m (a :*: b) = gToArgs m a ++ gToArgs m b
@@ -70,25 +99,25 @@ instance (Constructor c1, GArgParser f1, GArgParser (f :+: g)) =>
   gArgParser m =
     L1 <$> gArgParser m
     <|>
-    R1 <$> (string (conNameMod m $ conName (undefined :: C1 c1 f a))
-            *> space *> gArgParser m)
+    R1 <$> (pS (string (conNameMod m $ conName (undefined :: C1 c1 f a)))
+            *> gArgParser m)
 
 instance (Constructor c1, GArgParser f1, GArgParser (f :+: g)) =>
   GArgParser (C1 c1 f1 :+: (f :+: g)) where
   gArgParser m =
-    L1 <$> (string (conNameMod m $ conName (undefined :: C1 c1 f a))
-            *> space *> gArgParser m)
+    L1 <$> (pS (string (conNameMod m $ conName (undefined :: C1 c1 f a)))
+            *> gArgParser m)
     <|>
     R1 <$> gArgParser m
 
 instance (Constructor c1, Constructor c2, GArgParser f1, GArgParser f2) =>
   GArgParser (C1 c1 f1 :+: C1 c2 f2) where
   gArgParser m =
-    L1 <$> (string (conNameMod m $ conName (undefined :: C1 c1 f a))
-            *> space *> gArgParser m)
+    L1 <$> (pS (string (conNameMod m $ conName (undefined :: C1 c1 f a)))
+            *> gArgParser m)
     <|>
-    R1 <$> (string (conNameMod m $ conName (undefined :: C1 c2 f a))
-            *> space *> gArgParser m)
+    R1 <$> (pS (string (conNameMod m $ conName (undefined :: C1 c2 f a)))
+            *> gArgParser m)
 
 instance (Constructor c1, GToArgs f1, GToArgs (f :+: g)) =>
   GToArgs ((f :+: g) :+: C1 c1 f1) where
@@ -112,7 +141,7 @@ instance (GArgParser a, Selector c) => GArgParser (S1 c a) where
   gArgParser m = M1 <$> do
     let sname = case selName (undefined :: S1 c a f) of
           "" -> pure ()
-          name -> string (selNameMod m name) *> space
+          name -> pS (string (selNameMod m name) >> pure ())
     sname *> gArgParser m
 
 instance (GToArgs a, Selector c) => GToArgs (S1 c a) where
@@ -129,7 +158,7 @@ instance {-#OVERLAPPING#-}
     case selName (undefined :: S1 c (Rec0 (Maybe a)) f) of
       "" -> M1 <$> gArgParser m
       name -> do
-        x <- optional $ string (selNameMod m name) *> space *> argParser m
+        x <- optional $ (pS (string (selNameMod m name))) *> argParser m
         pure $ M1 $ K1 x
 
 instance {-#OVERLAPPING#-}
@@ -170,19 +199,19 @@ instance (ToArgs a) => GToArgs (K1 i a) where
 -- Basic types
 
 instance ArgParser Int where
-  argParser _ = read <$> some digitChar
+  argParser _ = pS $ read <$> some digitChar
 
 instance ToArgs Int where
   toArgs _ i = [show i]
 
 instance ArgParser String where
-  argParser _ = char '"' *> manyTill anyChar (char '"')
+  argParser _ = pS $ many anyChar
 
 instance ToArgs String where
-  toArgs _ i = [show i]
+  toArgs _ i = [i]
 
 instance ArgParser Double where
-  argParser _ = read <$> some (digitChar <|> char '.')
+  argParser _ = pS $ read <$> some (digitChar <|> char '.')
 
 instance ToArgs Double where
   toArgs _ i = [show i]
