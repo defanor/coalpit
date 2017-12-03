@@ -1,4 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
+module Main where
+
 import GHC.Generics
 import Coalpit
 

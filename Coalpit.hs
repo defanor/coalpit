@@ -31,6 +31,7 @@ module Coalpit (
   , Parser
   , Args(..)
   , pS
+  , readArg
   ) where
 
 import Data.List
@@ -242,33 +243,43 @@ instance (ToArgs a) => GToArgs (K1 i a) where
   gToArgs m (K1 x) = toArgs m x
 
 
--- Basic types
+-- Common types
+
+-- | Reads an argument using its 'Read' instance.
+readArg :: Read a => Parser a
+readArg = do
+  x <- token Right Nothing
+  case reads x of
+    [(n, "")] -> pure n
+    _ -> fail $ "Failed to read: " ++ x
 
 instance ArgParser Int where
-  argParser _ = do
-    x <- token Right Nothing
-    case reads x of
-      [(n, "")] -> pure n
-      _ -> fail "Failed to read an Int"
-
+  argParser _ = readArg
 instance ToArgs Int where
+  toArgs _ i = [show i]
+
+instance ArgParser Integer where
+  argParser _ = readArg
+instance ToArgs Integer where
+  toArgs _ i = [show i]
+
+instance ArgParser Rational where
+  argParser _ = readArg
+instance ToArgs Rational where
+  toArgs _ i = [show i]
+
+instance ArgParser Double where
+  argParser _ = readArg
+instance ToArgs Double where
   toArgs _ i = [show i]
 
 instance {-#OVERLAPPING#-} ArgParser String where
   argParser _ = token Right Nothing
-
 instance {-#OVERLAPPING#-} ToArgs String where
   toArgs _ i = [i]
 
-instance ArgParser Double where
-  argParser _ = do
-    x <- token Right Nothing
-    case reads x of
-      [(n, "")] -> pure n
-      _ -> fail $ "Failed to read a Double: " ++ x
-
-instance ToArgs Double where
-  toArgs _ i = [show i]
+instance ArgParser Bool
+instance ToArgs Bool
 
 instance ArgParser a => ArgParser (Maybe a)
 instance ToArgs a => ToArgs (Maybe a)
@@ -278,3 +289,25 @@ instance ToArgs a => ToArgs [a]
 
 instance (ArgParser a, ArgParser b) => ArgParser (Either a b)
 instance (ToArgs a, ToArgs b) => ToArgs (Either a b)
+
+-- | Expects a dot.
+instance ArgParser () where
+  argParser _ = pS (char '.') *> pure ()
+-- | Shows a dot.
+instance ToArgs () where
+  toArgs _ () = ["."]
+
+instance (ArgParser a, ArgParser b) => ArgParser (a, b)
+instance (ToArgs a, ToArgs b) => ToArgs (a, b)
+
+instance (ArgParser a, ArgParser b, ArgParser c) => ArgParser (a, b, c)
+instance (ToArgs a, ToArgs b, ToArgs c) => ToArgs (a, b, c)
+
+instance (ArgParser a, ArgParser b, ArgParser c, ArgParser d) =>
+  ArgParser (a, b, c, d)
+instance (ToArgs a, ToArgs b, ToArgs c, ToArgs d) => ToArgs (a, b, c, d)
+
+instance (ArgParser a, ArgParser b, ArgParser c, ArgParser d, ArgParser e) =>
+  ArgParser (a, b, c, d, e)
+instance (ToArgs a, ToArgs b, ToArgs c, ToArgs d, ToArgs e) =>
+  ToArgs (a, b, c, d, e)

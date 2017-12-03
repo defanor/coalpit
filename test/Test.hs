@@ -26,16 +26,16 @@ data Record = Record { maybeInt :: Maybe Int
                      , maybeDouble :: Maybe Double
                      , str :: String
                      , listOfStrings :: [String]
-                     , maybeListOfNumbers :: Maybe [Int]
+                     , maybeListOfNumbers :: Maybe [Integer]
                      , otherString :: String
                      } deriving (Generic, Eq, Show)
 instance ArgParser Record
 instance ToArgs Record
 instance Arbitrary Record where arbitrary = genericArbitraryU
 
-data Sum = Foo Int
-          | Bar
-          | Baz String Double
+data Sum = Foo Int Bool
+         | Bar
+         | Baz (String, (Double, Integer), Rational)
   deriving (Generic, Eq, Show)
 instance ArgParser Sum
 instance ToArgs Sum
@@ -70,12 +70,32 @@ instance ToArgs NestedRecord
 instance Arbitrary NestedRecord where arbitrary = genericArbitraryU
 
 data NestedSum = NestedFoo Record
-                | NestedBar Sum Basic Nested
-                | NestedBaz (Polymorphic Int Double)
-                deriving (Generic, Eq, Show)
+               | NestedBar Sum Basic Nested
+               | NestedBaz (Polymorphic Int Double)
+               deriving (Generic, Eq, Show)
 instance ArgParser NestedSum
 instance ToArgs NestedSum
 instance Arbitrary NestedSum where arbitrary = genericArbitraryU
+
+data RecursiveRecordMaybe = RecursiveRecordMaybe
+  { rrm :: Maybe RecursiveRecordMaybe
+  , record :: Maybe Record
+  , guard :: ()
+  } deriving (Generic, Eq, Show)
+instance ArgParser RecursiveRecordMaybe
+instance ToArgs RecursiveRecordMaybe
+instance Arbitrary RecursiveRecordMaybe where arbitrary = genericArbitraryU
+
+data RecursiveRecordMaybe2 = RecursiveRecordMaybe2
+  { record1' :: Maybe Record
+  , rrm' :: Maybe RecursiveRecordMaybe2
+  , record2' :: Maybe Record
+  , guard' :: ()
+  } deriving (Generic, Eq, Show)
+instance ArgParser RecursiveRecordMaybe2
+instance ToArgs RecursiveRecordMaybe2
+instance Arbitrary RecursiveRecordMaybe2 where arbitrary = genericArbitraryU
+
 
 printAndParse :: (ArgParser a, ToArgs a, Eq a)
               => Proxy a -> a -> Bool
@@ -104,4 +124,6 @@ qcProps = testGroup "Quickcheck properties"
   , mkTest (Proxy :: Proxy Recursive) "Recursive"
   , mkTest (Proxy :: Proxy NestedRecord) "NestedRecord"
   , mkTest (Proxy :: Proxy NestedSum) "NestedSum"
+  , mkTest (Proxy :: Proxy RecursiveRecordMaybe) "RecursiveRecordMaybe"
+  , mkTest (Proxy :: Proxy RecursiveRecordMaybe2) "RecursiveRecordMaybe2"
   ]

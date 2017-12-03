@@ -15,7 +15,8 @@ e.g.
 but the aim here is to handle more or less arbitrary types.
 
 Warning: it is currently possible to run into ambiguity by defining a
-recursive structure with optional named elements.
+recursive structure with optional named elements. Unit type can be
+used to avoid that, see the `RecursiveRecordMaybe` test.
 
 Not production-ready yet, merely a prototype.
 
