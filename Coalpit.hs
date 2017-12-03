@@ -1,3 +1,16 @@
+{- |
+Description :  Command-line options parsing and printing
+Maintainer  :  defanor <defanor@uberspace.net>
+Stability   :  unstable
+Portability :  non-portable (uses GHC extensions)
+
+Coalpit is a library for building "command-line program interfaces":
+the goal is to get interfaces between programs quickly and easily,
+while keeping them language-agnostic and more user- and shell
+scripting-friendly than JSON and similar formats.
+
+-}
+
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DefaultSignatures #-}
@@ -5,25 +18,42 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Coalpit where
+module Coalpit (
+  -- * Core classes
+  ArgParser(..)
+  , ToArgs(..)
+  -- * Utility functions
+  , fromArgs
+  -- * Modifiers
+  , Modifiers(..)
+  , defMod
+  -- * Parsing helpers
+  , Parser
+  , Args(..)
+  , pS
+  ) where
 
 import Data.List
 import GHC.Generics
 import Text.Megaparsec
 import Text.Megaparsec.Char
-import Data.Maybe
 import Data.Char
 import Data.Proxy
 import Data.Semigroup
-import Data.Either
 
 
+-- | Command-line arguments wrapper, used to avoid an orphan 'Stream'
+-- instance.
+newtype Args = Args [String]
+
+-- | Advances by one token.
 advance :: Pos -> SourcePos -> t -> SourcePos
-advance width (SourcePos n l c) t = SourcePos n l (c <> pos1)
+advance _ (SourcePos n l c) _ = SourcePos n l (c <> pos1)
 
-instance Stream [String] where
-  type Token [String] = String
-  type Tokens [String] = [String]
+-- | A list of strings (command-line arguments) stream.
+instance Stream Args where
+  type Token Args = String
+  type Tokens Args = [String]
   tokenToChunk Proxy = pure
   tokensToChunk Proxy = id
   chunkToTokens Proxy = id
@@ -31,32 +61,41 @@ instance Stream [String] where
   chunkEmpty Proxy = null
   advance1 Proxy = advance
   advanceN Proxy w = foldl' (advance w)
-  take1_ [] = Nothing
-  take1_ (t:ts) = Just (t, ts)
-  takeN_ n s
-    | n <= 0    = Just ([], s)
+  take1_ (Args []) = Nothing
+  take1_ (Args (t:ts)) = Just (t, Args ts)
+  takeN_ n (Args s)
+    | n <= 0    = Just ([], Args s)
     | null s    = Nothing
-    | otherwise = Just (splitAt n s)
-  takeWhile_ = span
+    | otherwise = Just (take n s, Args (drop n s))
+  takeWhile_ f (Args s) = (takeWhile f s, Args (dropWhile f s))
 
-type Parser = Parsec String [String]
+-- | Command-line arguments parser.
+type Parser = Parsec String Args
 
-pS :: Parsec String String a -> Parsec String [String] a
+-- | Applies a String parser to a single argument.
+pS :: Parsec String String a -> Parsec String Args a
 pS p = try $ do
   x <- token Right Nothing
   case parse p "argument" x of
     Left e -> fail $ show e
-    Right x -> pure x
+    Right x' -> pure x'
 
 
+-- | Name modifiers.
 data Modifiers = Modifiers { conNameMod :: String -> String
-                           , selNameMod :: String -> String }
+                           -- ^ Constructor name modifier.
+                           , selNameMod :: String -> String
+                           -- ^ Record selector name modifier.
+                           }
 
+-- | Default modifiers.
 defMod :: Modifiers
 defMod = Modifiers (map toLower) (("--" ++) . map toLower)
 
+
 -- Core classes
 
+-- | Arguments parser class.
 class ArgParser a where
   argParser :: Modifiers -> Parser a
   default argParser :: (Generic a, GArgParser (Rep a)) => Modifiers -> Parser a
@@ -65,6 +104,13 @@ class ArgParser a where
 class GArgParser f where
   gArgParser :: Modifiers -> Parser (f a)
 
+-- | Parses arguments.
+fromArgs :: ArgParser a => Modifiers -> [String] -> Either String a
+fromArgs m args = case parse (argParser m) "arguments" (Args args) of
+  Left err -> Left $ show err
+  Right x -> Right x
+
+-- | Arguments serializer class.
 class ToArgs a where
   toArgs :: Modifiers -> a -> [String]
   default toArgs :: (Generic a, GToArgs (Rep a)) => Modifiers -> a -> [String]
@@ -171,20 +217,20 @@ instance {-#OVERLAPPING#-}
 
 -- Constructors
 
-instance (GArgParser a, Constructor c) => GArgParser (C1 c a) where
+instance (GArgParser a) => GArgParser (C1 c a) where
   gArgParser m = M1 <$> gArgParser m
 
-instance (GToArgs a, Constructor c) => GToArgs (C1 c a) where
-  gToArgs m c@(M1 x) = gToArgs m x
+instance (GToArgs a) => GToArgs (C1 c a) where
+  gToArgs m (M1 x) = gToArgs m x
 
 
 -- Data types
 
-instance (GArgParser a, Datatype c) => GArgParser (D1 c a) where
+instance (GArgParser a) => GArgParser (D1 c a) where
   gArgParser m = M1 <$> gArgParser m
 
-instance (GToArgs a, Datatype c) => GToArgs (D1 c a) where
-  gToArgs m d@(M1 x) = gToArgs m x
+instance (GToArgs a) => GToArgs (D1 c a) where
+  gToArgs m (M1 x) = gToArgs m x
 
 
 -- Constraints and such

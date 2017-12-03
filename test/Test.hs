@@ -1,6 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
 
-import Text.Megaparsec
 import GHC.Generics
 import Generic.Random
 import Test.Tasty
@@ -78,9 +77,9 @@ instance ArgParser NestedSum
 instance ToArgs NestedSum
 instance Arbitrary NestedSum where arbitrary = genericArbitraryU
 
-printAndParse :: (ArgParser a, ToArgs a, Eq a, Show a, Arbitrary a)
+printAndParse :: (ArgParser a, ToArgs a, Eq a)
               => Proxy a -> a -> Bool
-printAndParse _ r = Right r == parse (argParser defMod) "test" (toArgs defMod r)
+printAndParse _ r = Right r == fromArgs defMod (toArgs defMod r)
 
 mkTest :: (ArgParser a, ToArgs a, Eq a, Show a, Arbitrary a)
        => Proxy a -> String -> TestTree
@@ -89,6 +88,7 @@ mkTest p n = QC.testProperty ("id == parse . print for " ++ n) (printAndParse p)
 main :: IO ()
 main = travisTestReporter defaultConfig [] qcProps
 
+qcProps :: TestTree
 qcProps = testGroup "Quickcheck properties"
   [ mkTest (Proxy :: Proxy Basic) "Basic"
   , mkTest (Proxy :: Proxy WithLists) "WithLists"

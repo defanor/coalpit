@@ -1,9 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
-
-module Main where
-
 import GHC.Generics
-import Text.Megaparsec
 import Coalpit
 
 data FooArgs = FooArgs { arg1 :: Int
@@ -28,10 +24,10 @@ instance ToArgs Input
 main :: IO ()
 main = do
   let val = Input { something = Nothing
-                  , fooBar = Just (Foo (FooArgs { arg1 = 1
-                                                , arg2 = "a string"}))
+                  , fooBar = Just (Foo FooArgs { arg1 = 1
+                                               , arg2 = "a string"})
                   , fooBar2 = Bar}
       args = toArgs defMod val
   print val
   print args
-  print $ parse (argParser defMod :: Parser Input) "test" args
+  print (fromArgs defMod args :: Either String Input)
