@@ -1,7 +1,6 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DefaultSignatures #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -155,11 +154,11 @@ instance (GToArgs a, Selector c) => GToArgs (S1 c a) where
 
 instance {-#OVERLAPPING#-}
   (ArgParser a, Selector c) => GArgParser (S1 c (Rec0 (Maybe a))) where
-  gArgParser m = do
+  gArgParser m =
     case selName (undefined :: S1 c (Rec0 (Maybe a)) f) of
       "" -> M1 <$> gArgParser m
       name -> do
-        x <- optional $ (pS (string (selNameMod m name))) *> argParser m
+        x <- optional $ pS (string (selNameMod m name)) *> argParser m
         pure $ M1 $ K1 x
 
 instance {-#OVERLAPPING#-}
@@ -200,19 +199,27 @@ instance (ToArgs a) => GToArgs (K1 i a) where
 -- Basic types
 
 instance ArgParser Int where
-  argParser _ = pS $ read <$> some digitChar
+  argParser _ = do
+    x <- token Right Nothing
+    case reads x of
+      [(n, "")] -> pure n
+      _ -> fail "Failed to read an Int"
 
 instance ToArgs Int where
   toArgs _ i = [show i]
 
 instance {-#OVERLAPPING#-} ArgParser String where
-  argParser _ = pS $ many anyChar
+  argParser _ = token Right Nothing
 
 instance {-#OVERLAPPING#-} ToArgs String where
   toArgs _ i = [i]
 
 instance ArgParser Double where
-  argParser _ = pS $ read <$> some (digitChar <|> char '.')
+  argParser _ = do
+    x <- token Right Nothing
+    case reads x of
+      [(n, "")] -> pure n
+      _ -> fail $ "Failed to read a Double: " ++ x
 
 instance ToArgs Double where
   toArgs _ i = [show i]

@@ -26,6 +26,19 @@ executable coalpit-example
 library
   exposed-modules:     Coalpit
   other-extensions:    TemplateHaskell, FlexibleInstances
-  build-depends:       base >=4.9 && <4.10
-                     , megaparsec >= 6.2.0
+  build-depends:       base >= 4.9 && < 5
+                     , megaparsec >= 6.2 && < 7
   default-language:    Haskell2010
+
+test-suite test-coalpit
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             Test.hs
+  build-depends:       base >= 4.9 && < 5
+                     , megaparsec >= 6.2 && < 7
+                     , QuickCheck >= 2.10 && < 3
+                     , generic-random >= 1 && < 2
+                     , tasty >= 0.12 && < 1
+                     , tasty-quickcheck >= 0.9 && < 1
+                     , tasty-travis >= 0.2 && < 1
+                     , coalpit

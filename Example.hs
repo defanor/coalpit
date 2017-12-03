@@ -36,3 +36,24 @@ main = do
   print val
   print a
   print $ parse (argParser defMod :: Parser Wrap) "test" a
+
+
+data Record = Record { maybeInt :: Maybe Int
+                     , maybeDouble :: Maybe Double
+                     , str :: String
+                     , listOfStrings :: [String]
+                     , maybeListOfNumbers :: Maybe [Int]
+                     , otherString :: String
+                     } deriving (Generic, Eq, Show)
+instance ArgParser Record
+instance ToArgs Record
+
+
+data NestedRecursiveRecord =
+  NestedRecursiveRecord { record1 :: Maybe Record
+                        , recursiveRecord :: Maybe NestedRecursiveRecord
+                        , record2 :: Maybe Record
+                        } deriving (Generic, Eq, Show)
+instance ArgParser NestedRecursiveRecord
+instance ToArgs NestedRecursiveRecord
+

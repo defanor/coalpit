@@ -20,4 +20,7 @@ architectures. Described in more detail in
 the
 [command-line program interface](https://defanor.uberspace.net/notes/command-line-program-interface.html) note.
 
+Warning: it is currently possible to run into ambiguity by defining a
+recursive structure with optional named elements.
+
 Far from production-ready yet, merely a prototype.
