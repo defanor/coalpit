@@ -16,6 +16,7 @@ import Data.Maybe
 import Data.Char
 import Data.Proxy
 import Data.Semigroup
+import Data.Either
 
 
 advance :: Pos -> SourcePos -> t -> SourcePos
@@ -204,10 +205,10 @@ instance ArgParser Int where
 instance ToArgs Int where
   toArgs _ i = [show i]
 
-instance ArgParser String where
+instance {-#OVERLAPPING#-} ArgParser String where
   argParser _ = pS $ many anyChar
 
-instance ToArgs String where
+instance {-#OVERLAPPING#-} ToArgs String where
   toArgs _ i = [i]
 
 instance ArgParser Double where
@@ -218,3 +219,9 @@ instance ToArgs Double where
 
 instance ArgParser a => ArgParser (Maybe a)
 instance ToArgs a => ToArgs (Maybe a)
+
+instance ArgParser a => ArgParser [a]
+instance ToArgs a => ToArgs [a]
+
+instance (ArgParser a, ArgParser b) => ArgParser (Either a b)
+instance (ToArgs a, ToArgs b) => ToArgs (Either a b)
