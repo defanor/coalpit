@@ -1,26 +1,44 @@
 # Coalpit
 
-Coalpit is a library for building command-line program
-interfaces. They are like command-line user interfaces, but for
-programs.
+Coalpit is a library for
+building
+[command-line program interfaces](https://defanor.uberspace.net/notes/command-line-program-interface.html):
+the goal is to get interfaces between programs quickly and easily,
+while keeping them language-agnostic and more user- and shell
+scripting-friendly than JSON and similar formats.
 
 Given a type, it derives instances to print and parse it as
-command-line arguments. The resulting serialization wouldn't be as
+command-line arguments. The resulting deserialization wouldn't be as
 nice as that of
 e.g.
 [optparse-generic](https://hackage.haskell.org/package/optparse-generic),
-but the aim here is to handle arbitrary types.
-
-The goal is to
-faciliate
-[the KISS principle](https://en.wikipedia.org/wiki/KISS_principle)
-preservation for interfaces between system components in certain
-(rather [unixy](https://en.wikipedia.org/wiki/Unix_philosophy))
-architectures. Described in more detail in
-the
-[command-line program interface](https://defanor.uberspace.net/notes/command-line-program-interface.html) note.
+but the aim here is to handle more or less arbitrary types.
 
 Warning: it is currently possible to run into ambiguity by defining a
 recursive structure with optional named elements.
 
-Far from production-ready yet, merely a prototype.
+Not production-ready yet, merely a prototype.
+
+## Example
+
+An example is available in `Example.hs`. Given the following Haskell
+value:
+
+```haskell
+Input { something = Nothing
+      , fooBar = Just (Foo (FooArgs { arg1 = 1
+                                    , arg2 = "a string"}))
+      , fooBar2 = Bar}
+```
+
+Its serialized version should look like this:
+
+```haskell
+["--foobar","foo","--arg1","1","--arg2","a string","--foobar2","bar"]
+```
+
+What would look like this in a shell:
+
+```sh
+--foobar foo --arg1 1 --arg2 'a string' --foobar2 bar
+```
