@@ -47,12 +47,41 @@ instance (GArgParser a, GArgParser b) => GArgParser (a :*: b) where
 instance (GToArgs a, GToArgs b) => GToArgs (a :*: b) where
   gToArgs (a :*: b) = gToArgs a ++ gToArgs b
 
-instance (GArgParser a, GArgParser b) => GArgParser (a :+: b) where
-  gArgParser = L1 <$> gArgParser <|> R1 <$> gArgParser
+instance (Constructor c1, GArgParser f1, GArgParser (f :+: g)) =>
+  GArgParser ((f :+: g) :+: C1 c1 f1) where
+  gArgParser =
+    L1 <$> gArgParser
+    <|>
+    R1 <$> (string (conName (undefined :: C1 c1 f a)) *> space *> gArgParser)
 
-instance (GToArgs a, GToArgs b) => GToArgs (a :+: b) where
-  gToArgs c@(L1 x) = gToArgs x
-  gToArgs c@(R1 x) = gToArgs x
+instance (Constructor c1, GArgParser f1, GArgParser (f :+: g)) =>
+  GArgParser (C1 c1 f1 :+: (f :+: g)) where
+  gArgParser =
+    L1 <$> (string (conName (undefined :: C1 c1 f a)) *> space *> gArgParser)
+    <|>
+    R1 <$> gArgParser
+
+instance (Constructor c1, Constructor c2, GArgParser f1, GArgParser f2) =>
+  GArgParser (C1 c1 f1 :+: C1 c2 f2) where
+  gArgParser =
+    L1 <$> (string (conName (undefined :: C1 c1 f a)) *> space *> gArgParser)
+    <|>
+    R1 <$> (string (conName (undefined :: C1 c2 f a)) *> space *> gArgParser)
+
+instance (Constructor c1, GToArgs f1, GToArgs (f :+: g)) =>
+  GToArgs ((f :+: g) :+: C1 c1 f1) where
+  gToArgs (L1 x) = gToArgs x
+  gToArgs (R1 x) = conName x : gToArgs x
+
+instance (Constructor c1, GToArgs f1, GToArgs (f :+: g)) =>
+  GToArgs (C1 c1 f1 :+: (f :+: g)) where
+  gToArgs (L1 x) = conName x : gToArgs x
+  gToArgs (R1 x) = gToArgs x
+
+instance (Constructor c1, Constructor c2, GToArgs f1, GToArgs f2) =>
+  GToArgs (C1 c1 f1 :+: C1 c2 f2) where
+  gToArgs (L1 x) = conName x : gToArgs x
+  gToArgs (R1 x) = conName x : gToArgs x
 
 instance {-#OVERLAPPING#-}
   (ArgParser a, Selector c) => GArgParser (S1 c (Rec0 (Maybe a))) where
@@ -81,13 +110,13 @@ instance {-#OVERLAPPING#-}
 instance (GToArgs a, Selector c) => GToArgs (S1 c a) where
   gToArgs s@(M1 x) = case selName s of
                          "" -> gToArgs x
-                         name -> ("--" ++ selName s) : gToArgs x
+                         name -> ("--" ++ name) : gToArgs x
 
 instance (GArgParser a, Constructor c) => GArgParser (C1 c a) where
-  gArgParser = string (conName (undefined :: C1 c a f)) *> space *> (M1 <$> gArgParser)
+  gArgParser = M1 <$> gArgParser
 
 instance (GToArgs a, Constructor c) => GToArgs (C1 c a) where
-  gToArgs c@(M1 x) = conName c : gToArgs x
+  gToArgs c@(M1 x) = gToArgs x
 
 
 instance (GArgParser a, Datatype c) => GArgParser (D1 c a) where

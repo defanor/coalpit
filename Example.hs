@@ -17,13 +17,19 @@ data Foo = Bar Int
          | Qux (Maybe Int) (Maybe Int) RecTest (Maybe Double)
   deriving (Generic, Show)
 
-instance ToArgs Foo
 instance ArgParser Foo
+instance ToArgs Foo
+
+data Wrap = Wrap { foo :: Maybe Foo, num :: Maybe Int }
+  deriving (Generic, Show)
+
+instance ArgParser Wrap
+instance ToArgs Wrap
 
 main :: IO ()
 main = do
-  let val = Qux Nothing (Just 1) (RecTest Nothing (Just 2.3) Nothing) Nothing
+  let val = Wrap (Just $ Qux Nothing (Just 1) (RecTest Nothing (Just 2.3) Nothing) Nothing) (Just 1)
       a = args val
   print val
   putStrLn a
-  print $ parse (argParser :: Parser Foo) "test" a
+  print $ parse (argParser :: Parser Wrap) "test" a
