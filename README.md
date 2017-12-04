@@ -14,9 +14,10 @@ e.g.
 [optparse-generic](https://hackage.haskell.org/package/optparse-generic),
 but the aim here is to handle more or less arbitrary types.
 
-Warning: it is currently possible to run into ambiguity by defining a
-recursive structure with optional named elements. Unit type can be
-used to avoid that, see the `RecursiveRecordMaybe` test.
+Warning: it is possible to run into ambiguity by defining a recursive
+structure with optional named elements while using default options.
+Unit type can be used to avoid that, or `omitNamedOptions` can be
+disabled.
 
 Not production-ready yet, merely a prototype.
 
@@ -32,7 +33,7 @@ Input { something = Nothing
       , fooBar2 = Bar}
 ```
 
-With the default modifiers, its serialized version should look like
+With the default options, its serialized version should look like
 this:
 
 ```haskell
@@ -45,9 +46,11 @@ What would look like this in a shell:
 --foobar foo 1 'a string' bar
 ```
 
-A more verbose version can be produced and parsed with
-`alwaysUseSelName = True`:
+More verbose versions can be produced and parsed with
+`alwaysUseSelName = True` and/or `omitNamedOptions = False`:
 
 ```sh
 --foobar foo --arg1 1 --arg2 'a string' --foobar2 bar
+nothing just foo 1 'a string' bar
+--something nothing --foobar just foo --arg1 1 --arg2 'a string' --foobar2 bar
 ```

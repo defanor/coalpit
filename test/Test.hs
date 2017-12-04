@@ -106,14 +106,14 @@ instance ToArgs RecordStrings
 instance Arbitrary RecordStrings where arbitrary = genericArbitraryU
 
 printAndParse :: (ArgParser a, ToArgs a, Eq a)
-              => Modifiers -> Proxy a -> a -> Bool
+              => Options -> Proxy a -> a -> Bool
 printAndParse m _ r = Right r == fromArgs m (toArgs m r)
 
 mkTest :: (ArgParser a, ToArgs a, Eq a, Show a, Arbitrary a)
-       => Modifiers -> Proxy a -> String -> TestTree
+       => Options -> Proxy a -> String -> TestTree
 mkTest m p n = QC.testProperty n (printAndParse m p)
 
-idEqToAndFrom :: Modifiers -> TestTree
+idEqToAndFrom :: Options -> TestTree
 idEqToAndFrom m = testGroup "id == parse . print"
   [ mkTest m (Proxy :: Proxy Basic) "Basic"
   , mkTest m (Proxy :: Proxy WithLists) "WithLists"
@@ -134,17 +134,19 @@ idEqToAndFrom m = testGroup "id == parse . print"
   , mkTest m (Proxy :: Proxy RecordStrings) "RecordStrings"
   ]
 
-variousModifiers :: (Modifiers -> TestTree) -> TestTree
-variousModifiers tt = testGroup "Various modifiers"
-  [ testGroup "alwaysUseSelName = True"
-    [tt defMod { alwaysUseSelName = True }]
-  , testGroup "alwaysUseSelName = False"
-    [tt defMod { alwaysUseSelName = False }]
+variousOptions :: (Options -> TestTree) -> TestTree
+variousOptions tt = testGroup "Various modifiers"
+  [ testGroup (concat [ "alwaysUseSelName = ", show ausn
+                      , ", omitNamedOptions = ", show ono])
+    [tt defOpt { alwaysUseSelName = ausn
+               , omitNamedOptions = ono }]
+  | ausn <- [True, False]
+  , ono <- [True, False]
   ]
 
 qcProps :: TestTree
 qcProps = testGroup "Quickcheck properties"
-  [ variousModifiers idEqToAndFrom ]
+  [ variousOptions idEqToAndFrom ]
 
 main :: IO ()
 main = travisTestReporter defaultConfig [] qcProps

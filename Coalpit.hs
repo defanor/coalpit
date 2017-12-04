@@ -27,11 +27,11 @@ instance 'ToArgs' Foo
 main :: IO ()
 main = do
   args <- getArgs
-  case 'fromArgs' 'defMod' args of
+  case 'fromArgs' 'defOpt' args of
     Left err -> putStrLn err
     Right x -> do
       print (x :: Foo)
-      print $ 'toArgs' 'defMod' x
+      print $ 'toArgs' 'defOpt' x
 @
 
 Then, in a shell:
@@ -58,9 +58,9 @@ module Coalpit (
   , ToArgs(..)
   -- * Utility functions
   , fromArgs
-  -- * Modifiers
-  , Modifiers(..)
-  , defMod
+  -- * Options
+  , Options(..)
+  , defOpt
   -- * Parsing helpers
   , Parser
   , CLArg(..)
@@ -99,13 +99,13 @@ instance Stream [CLArg] where
   chunkEmpty Proxy = null
   advance1 Proxy = advance
   advanceN Proxy w = foldl' (advance w)
-  take1_ ([]) = Nothing
-  take1_ ((t:ts)) = Just (t, ts)
+  take1_ [] = Nothing
+  take1_ (t:ts) = Just (t, ts)
   takeN_ n s
     | n <= 0    = Just ([], s)
     | null s    = Nothing
-    | otherwise = Just (take n s, (drop n s))
-  takeWhile_ f s = (takeWhile f s, (dropWhile f s))
+    | otherwise = Just (splitAt n s)
+  takeWhile_ = span
 
 instance ShowToken CLArg where
   showTokens xs = concat $ NE.map unArg xs
@@ -122,46 +122,49 @@ pS p = try $ do
     Right x' -> pure x'
 
 
--- | Name modifiers.
-data Modifiers = Modifiers { conNameMod :: String -> String
-                           -- ^ Constructor name modifier.
-                           , selNameMod :: String -> String
-                           -- ^ Record selector name modifier.
-                           , alwaysUseSelName :: Bool
-                           -- ^ Add record selector name always, not
-                           -- just for optional arguments.
-                           }
+-- | Printing and parsing options.
+data Options = Options { conNameMod :: String -> String
+                       -- ^ Constructor name modifier.
+                       , selNameMod :: String -> String
+                       -- ^ Record selector name modifier.
+                       , alwaysUseSelName :: Bool
+                       -- ^ Add record selector name always, not just
+                       -- for optional arguments.
+                       , omitNamedOptions :: Bool
+                       -- ^ Omit named Maybe values to indicate
+                       -- 'Nothing'.
+                       }
 
--- | Default modifiers.
-defMod :: Modifiers
-defMod = Modifiers (map toLower) (("--" ++) . map toLower) False
+-- | Default options.
+defOpt :: Options
+defOpt = Options (map toLower) (("--" ++) . map toLower) False True
 
 
 -- Core classes
 
 -- | Arguments parser class.
 class ArgParser a where
-  argParser :: Modifiers -> Parser a
-  default argParser :: (Generic a, GArgParser (Rep a)) => Modifiers -> Parser a
-  argParser m = to <$> gArgParser m
+  argParser :: Options -> Parser a
+  default argParser :: (Generic a, GArgParser (Rep a)) => Options -> Parser a
+  argParser o = to <$> gArgParser o
 
 class GArgParser f where
-  gArgParser :: Modifiers -> Parser (f a)
+  gArgParser :: Options -> Parser (f a)
 
 -- | Parses arguments.
-fromArgs :: ArgParser a => Modifiers -> [String] -> Either String a
-fromArgs m args = case parse (argParser m) "arguments" (map CLArg args) of
+fromArgs :: ArgParser a => Options -> [String] -> Either String a
+fromArgs o args = case parse (argParser o) "arguments" (map CLArg args) of
   Left err -> Left $ parseErrorPretty err
   Right x -> Right x
 
 -- | Arguments serializer class.
 class ToArgs a where
-  toArgs :: Modifiers -> a -> [String]
-  default toArgs :: (Generic a, GToArgs (Rep a)) => Modifiers -> a -> [String]
-  toArgs m a = gToArgs m (from a)
+  toArgs :: Options -> a -> [String]
+  default toArgs :: (Generic a, GToArgs (Rep a)) => Options -> a -> [String]
+  toArgs o a = gToArgs o (from a)
 
 class GToArgs f where
-  gToArgs :: Modifiers -> f a -> [String]
+  gToArgs :: Options -> f a -> [String]
 
 
 -- Units
@@ -227,39 +230,46 @@ instance (Constructor c1, Constructor c2, GToArgs f1, GToArgs f2) =>
 
 -- Record Selectors
 
+parseS1 :: (GArgParser a) => String -> Options -> Parser (S1 c a f)
+parseS1 n o =
+  let sname = case (n, alwaysUseSelName o) of
+        ("", _) -> pure ()
+        (_, False) -> pure ()
+        (name, True) -> pS (string (selNameMod o name)) >> pure ()
+  in M1 <$> (sname *> gArgParser o)
+
+printS1 :: (GToArgs f, Selector c) => Options -> S1 c f a -> [String]
+printS1 o s@(M1 x) = case (selName s, alwaysUseSelName o) of
+                       ("", _) -> gToArgs o x
+                       (_, False) -> gToArgs o x
+                       (name, True) -> selNameMod o name : gToArgs o x
+
 instance (GArgParser a, Selector c) => GArgParser (S1 c a) where
-  gArgParser m = M1 <$> do
-    let sname = case (selName (undefined :: S1 c a f), alwaysUseSelName m) of
-          ("", _) -> pure ()
-          (_, False) -> pure ()
-          (name, True) -> pS (string (selNameMod m name)) >> pure ()
-    sname *> gArgParser m
+  gArgParser = parseS1 (selName (undefined :: S1 c a f))
 
 instance (GToArgs a, Selector c) => GToArgs (S1 c a) where
-  gToArgs m s@(M1 x) = case (selName s, alwaysUseSelName m) of
-                         ("", _) -> gToArgs m x
-                         (_, False) -> gToArgs m x
-                         (name, True) -> selNameMod m name : gToArgs m x
-
+  gToArgs = printS1
 
 -- Optional arguments
 
 instance {-#OVERLAPPING#-}
   (ArgParser a, Selector c) => GArgParser (S1 c (Rec0 (Maybe a))) where
   gArgParser m =
-    case selName (undefined :: S1 c (Rec0 (Maybe a)) f) of
-      "" -> M1 <$> gArgParser m
-      name -> do
-        x <- optional $ pS (string (selNameMod m name)) *> argParser m
-        pure $ M1 $ K1 x
+    let n = selName (undefined :: S1 c (Rec0 (Maybe a)) f)
+    in case (omitNamedOptions m, null n) of
+      (True, True) -> M1 <$> gArgParser m
+      (True, False) ->
+        M1 . K1 <$> optional (pS (string (selNameMod m n)) *> argParser m)
+      _ -> parseS1 n m
 
 instance {-#OVERLAPPING#-}
   (ToArgs a, Selector c) => GToArgs (S1 c (Rec0 (Maybe a))) where
-  gToArgs m s@(M1 (K1 x)) = case (selName s, x) of
-    ("", _) -> toArgs m x
-    (_, Nothing) -> []
-    (name, Just x') -> selNameMod m name : toArgs m x'
-
+  gToArgs m s@(M1 (K1 x))
+    | omitNamedOptions m = case (selName s, x) of
+        ("", _) -> toArgs m x
+        (_, Nothing) -> []
+        (name, Just x') -> selNameMod m name : toArgs m x'
+    | otherwise = printS1 m s
 
 -- Constructors
 

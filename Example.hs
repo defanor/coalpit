@@ -29,7 +29,7 @@ main = do
                   , fooBar = Just (Foo FooArgs { arg1 = 1
                                                , arg2 = "a string"})
                   , fooBar2 = Bar}
-      args = toArgs defMod val
+      args = toArgs defOpt val
   print val
   print args
-  print (fromArgs defMod args :: Either String Input)
+  print (fromArgs defOpt args :: Either String Input)
