@@ -63,7 +63,7 @@ module Coalpit (
   , defMod
   -- * Parsing helpers
   , Parser
-  , Args(..)
+  , CLArg(..)
   , pS
   , readArg
   ) where
@@ -75,20 +75,23 @@ import Text.Megaparsec.Char
 import Data.Char
 import Data.Proxy
 import Data.Semigroup
+import Data.Void
+import qualified Data.List.NonEmpty as NE
 
 
--- | Command-line arguments wrapper, used to avoid an orphan 'Stream'
--- instance.
-newtype Args = Args [String]
+-- | Command-line argument wrapper, used to avoid orphan ShowToken
+-- String and Stream [String] instances.
+newtype CLArg = CLArg { unArg :: String }
+  deriving (Ord, Eq)
 
 -- | Advances by one token.
 advance :: Pos -> SourcePos -> t -> SourcePos
 advance _ (SourcePos n l c) _ = SourcePos n l (c <> pos1)
 
 -- | A list of strings (command-line arguments) stream.
-instance Stream Args where
-  type Token Args = String
-  type Tokens Args = [String]
+instance Stream [CLArg] where
+  type Token [CLArg] = CLArg
+  type Tokens [CLArg] = [CLArg]
   tokenToChunk Proxy = pure
   tokensToChunk Proxy = id
   chunkToTokens Proxy = id
@@ -96,21 +99,24 @@ instance Stream Args where
   chunkEmpty Proxy = null
   advance1 Proxy = advance
   advanceN Proxy w = foldl' (advance w)
-  take1_ (Args []) = Nothing
-  take1_ (Args (t:ts)) = Just (t, Args ts)
-  takeN_ n (Args s)
-    | n <= 0    = Just ([], Args s)
+  take1_ ([]) = Nothing
+  take1_ ((t:ts)) = Just (t, ts)
+  takeN_ n s
+    | n <= 0    = Just ([], s)
     | null s    = Nothing
-    | otherwise = Just (take n s, Args (drop n s))
-  takeWhile_ f (Args s) = (takeWhile f s, Args (dropWhile f s))
+    | otherwise = Just (take n s, (drop n s))
+  takeWhile_ f s = (takeWhile f s, (dropWhile f s))
+
+instance ShowToken CLArg where
+  showTokens xs = concat $ NE.map unArg xs
 
 -- | Command-line arguments parser.
-type Parser = Parsec String Args
+type Parser = Parsec Void [CLArg]
 
 -- | Applies a String parser to a single argument.
-pS :: Parsec String String a -> Parsec String Args a
+pS :: Parsec Void String a -> Parsec Void [CLArg] a
 pS p = try $ do
-  x <- token Right Nothing
+  x <- token (Right . unArg) Nothing
   case parse p "argument" x of
     Left e -> fail $ show e
     Right x' -> pure x'
@@ -144,8 +150,8 @@ class GArgParser f where
 
 -- | Parses arguments.
 fromArgs :: ArgParser a => Modifiers -> [String] -> Either String a
-fromArgs m args = case parse (argParser m) "arguments" (Args args) of
-  Left err -> Left $ show err
+fromArgs m args = case parse (argParser m) "arguments" (map CLArg args) of
+  Left err -> Left $ parseErrorPretty err
   Right x -> Right x
 
 -- | Arguments serializer class.
@@ -287,7 +293,7 @@ instance (ToArgs a) => GToArgs (K1 i a) where
 -- | Reads an argument using its 'Read' instance.
 readArg :: Read a => Parser a
 readArg = do
-  x <- token Right Nothing
+  x <- token (Right . unArg) Nothing
   case reads x of
     [(n, "")] -> pure n
     _ -> fail $ "Failed to read: " ++ x
@@ -313,7 +319,7 @@ instance ToArgs Double where
   toArgs _ i = [show i]
 
 instance {-#OVERLAPPING#-} ArgParser String where
-  argParser _ = token Right Nothing
+  argParser _ = token (Right . unArg) Nothing
 instance {-#OVERLAPPING#-} ToArgs String where
   toArgs _ i = [i]
 
