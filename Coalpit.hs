@@ -9,6 +9,40 @@ the goal is to get interfaces between programs quickly and easily,
 while keeping them language-agnostic and more user- and shell
 scripting-friendly than JSON and similar formats.
 
+
+== Example
+
+@
+\{\-\# LANGUAGE DeriveGeneric \#\-\}
+import GHC.Generics
+import System.Environment
+import Coalpit
+
+data Foo = Foo { bar :: Maybe Int
+               , baz :: String
+               } deriving (Generic, Show)
+instance 'ArgParser' Foo
+instance 'ToArgs' Foo
+
+main :: IO ()
+main = do
+  args <- getArgs
+  case 'fromArgs' 'defMod' args of
+    Left err -> putStrLn err
+    Right x -> do
+      print (x :: Foo)
+      print $ 'toArgs' 'defMod' x
+@
+
+Then, in a shell:
+
+> $ ./Example 'a string'
+> Foo {bar = Nothing, baz = "a string"}
+> ["a string"]
+> $ ./Example --bar 42 'a string'
+> Foo {bar = Just 42, baz = "a string"}
+> ["--bar","42","a string"]
+
 -}
 
 {-# LANGUAGE TypeFamilies #-}
