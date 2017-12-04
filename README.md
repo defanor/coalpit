@@ -45,8 +45,8 @@ What would look like this in a shell:
 --foobar foo 1 'a string' bar
 ```
 
-A more verbose version can be produced with `alwaysAddSelName = True`,
-while parsing would accept either version:
+A more verbose version can be produced and parsed with
+`alwaysUseSelName = True`:
 
 ```sh
 --foobar foo --arg1 1 --arg2 'a string' --foobar2 bar

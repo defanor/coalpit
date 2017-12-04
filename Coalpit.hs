@@ -87,7 +87,7 @@ data Modifiers = Modifiers { conNameMod :: String -> String
                            -- ^ Constructor name modifier.
                            , selNameMod :: String -> String
                            -- ^ Record selector name modifier.
-                           , alwaysAddSelName :: Bool
+                           , alwaysUseSelName :: Bool
                            -- ^ Add record selector name always, not
                            -- just for optional arguments.
                            }
@@ -189,14 +189,14 @@ instance (Constructor c1, Constructor c2, GToArgs f1, GToArgs f2) =>
 
 instance (GArgParser a, Selector c) => GArgParser (S1 c a) where
   gArgParser m = M1 <$> do
-    let sname = case selName (undefined :: S1 c a f) of
-          "" -> pure ()
-          name -> optional (pS (string (selNameMod m name)))
-                  >> pure ()
+    let sname = case (selName (undefined :: S1 c a f), alwaysUseSelName m) of
+          ("", _) -> pure ()
+          (_, False) -> pure ()
+          (name, True) -> pS (string (selNameMod m name)) >> pure ()
     sname *> gArgParser m
 
 instance (GToArgs a, Selector c) => GToArgs (S1 c a) where
-  gToArgs m s@(M1 x) = case (selName s, alwaysAddSelName m) of
+  gToArgs m s@(M1 x) = case (selName s, alwaysUseSelName m) of
                          ("", _) -> gToArgs m x
                          (_, False) -> gToArgs m x
                          (name, True) -> selNameMod m name : gToArgs m x

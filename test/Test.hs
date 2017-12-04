@@ -96,6 +96,14 @@ instance ArgParser RecursiveRecordMaybe2
 instance ToArgs RecursiveRecordMaybe2
 instance Arbitrary RecursiveRecordMaybe2 where arbitrary = genericArbitraryU
 
+data RecordStrings = RecordStrings
+  { s1 :: String
+  , s2 :: String
+  , s3 :: String
+  } deriving (Generic, Eq, Show)
+instance ArgParser RecordStrings
+instance ToArgs RecordStrings
+instance Arbitrary RecordStrings where arbitrary = genericArbitraryU
 
 printAndParse :: (ArgParser a, ToArgs a, Eq a)
               => Modifiers -> Proxy a -> a -> Bool
@@ -123,14 +131,15 @@ idEqToAndFrom m = testGroup "id == parse . print"
   , mkTest m (Proxy :: Proxy NestedSum) "NestedSum"
   , mkTest m (Proxy :: Proxy RecursiveRecordMaybe) "RecursiveRecordMaybe"
   , mkTest m (Proxy :: Proxy RecursiveRecordMaybe2) "RecursiveRecordMaybe2"
+  , mkTest m (Proxy :: Proxy RecordStrings) "RecordStrings"
   ]
 
 variousModifiers :: (Modifiers -> TestTree) -> TestTree
 variousModifiers tt = testGroup "Various modifiers"
-  [ testGroup "alwaysAddSelName = True"
-    [tt defMod { alwaysAddSelName = True }]
-  , testGroup "alwaysAddSelName = False"
-    [tt defMod { alwaysAddSelName = False }]
+  [ testGroup "alwaysUseSelName = True"
+    [tt defMod { alwaysUseSelName = True }]
+  , testGroup "alwaysUseSelName = False"
+    [tt defMod { alwaysUseSelName = False }]
   ]
 
 qcProps :: TestTree
