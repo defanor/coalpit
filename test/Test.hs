@@ -98,32 +98,44 @@ instance Arbitrary RecursiveRecordMaybe2 where arbitrary = genericArbitraryU
 
 
 printAndParse :: (ArgParser a, ToArgs a, Eq a)
-              => Proxy a -> a -> Bool
-printAndParse _ r = Right r == fromArgs defMod (toArgs defMod r)
+              => Modifiers -> Proxy a -> a -> Bool
+printAndParse m _ r = Right r == fromArgs m (toArgs m r)
 
 mkTest :: (ArgParser a, ToArgs a, Eq a, Show a, Arbitrary a)
-       => Proxy a -> String -> TestTree
-mkTest p n = QC.testProperty ("id == parse . print for " ++ n) (printAndParse p)
+       => Modifiers -> Proxy a -> String -> TestTree
+mkTest m p n = QC.testProperty n (printAndParse m p)
 
-main :: IO ()
-main = travisTestReporter defaultConfig [] qcProps
+idEqToAndFrom :: Modifiers -> TestTree
+idEqToAndFrom m = testGroup "id == parse . print"
+  [ mkTest m (Proxy :: Proxy Basic) "Basic"
+  , mkTest m (Proxy :: Proxy WithLists) "WithLists"
+  , mkTest m (Proxy :: Proxy Record) "Record"
+  , mkTest m (Proxy :: Proxy Sum) "Sum"
+  , mkTest m (Proxy :: Proxy Nested) "Nested"
+  , mkTest m (Proxy :: Proxy (Polymorphic Int Double))
+    "Polymorphic Int Double"
+  , mkTest m (Proxy :: Proxy (Polymorphic Basic Record))
+    "Polymorphic Basic Record"
+  , mkTest m (Proxy :: Proxy (Polymorphic Nested (Polymorphic Basic Sum)))
+    "Polymorphic Nested (Polymorphic Basic Sum)"
+  , mkTest m (Proxy :: Proxy Recursive) "Recursive"
+  , mkTest m (Proxy :: Proxy NestedRecord) "NestedRecord"
+  , mkTest m (Proxy :: Proxy NestedSum) "NestedSum"
+  , mkTest m (Proxy :: Proxy RecursiveRecordMaybe) "RecursiveRecordMaybe"
+  , mkTest m (Proxy :: Proxy RecursiveRecordMaybe2) "RecursiveRecordMaybe2"
+  ]
+
+variousModifiers :: (Modifiers -> TestTree) -> TestTree
+variousModifiers tt = testGroup "Various modifiers"
+  [ testGroup "alwaysAddSelName = True"
+    [tt defMod { alwaysAddSelName = True }]
+  , testGroup "alwaysAddSelName = False"
+    [tt defMod { alwaysAddSelName = False }]
+  ]
 
 qcProps :: TestTree
 qcProps = testGroup "Quickcheck properties"
-  [ mkTest (Proxy :: Proxy Basic) "Basic"
-  , mkTest (Proxy :: Proxy WithLists) "WithLists"
-  , mkTest (Proxy :: Proxy Record) "Record"
-  , mkTest (Proxy :: Proxy Sum) "Sum"
-  , mkTest (Proxy :: Proxy Nested) "Nested"
-  , mkTest (Proxy :: Proxy (Polymorphic Int Double))
-    "Polymorphic Int Double"
-  , mkTest (Proxy :: Proxy (Polymorphic Basic Record))
-    "Polymorphic Basic Record"
-  , mkTest (Proxy :: Proxy (Polymorphic Nested (Polymorphic Basic Sum)))
-    "Polymorphic Nested (Polymorphic Basic Sum)"
-  , mkTest (Proxy :: Proxy Recursive) "Recursive"
-  , mkTest (Proxy :: Proxy NestedRecord) "NestedRecord"
-  , mkTest (Proxy :: Proxy NestedSum) "NestedSum"
-  , mkTest (Proxy :: Proxy RecursiveRecordMaybe) "RecursiveRecordMaybe"
-  , mkTest (Proxy :: Proxy RecursiveRecordMaybe2) "RecursiveRecordMaybe2"
-  ]
+  [ variousModifiers idEqToAndFrom ]
+
+main :: IO ()
+main = travisTestReporter defaultConfig [] qcProps

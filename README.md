@@ -32,13 +32,21 @@ Input { something = Nothing
       , fooBar2 = Bar}
 ```
 
-Its serialized version should look like this:
+With the default modifiers, its serialized version should look like
+this:
 
 ```haskell
-["--foobar","foo","--arg1","1","--arg2","a string","--foobar2","bar"]
+["--foobar","foo","1","a string","bar"]
 ```
 
 What would look like this in a shell:
+
+```sh
+--foobar foo 1 'a string' bar
+```
+
+A more verbose version can be produced with `alwaysAddSelName = True`,
+while parsing would accept either version:
 
 ```sh
 --foobar foo --arg1 1 --arg2 'a string' --foobar2 bar
