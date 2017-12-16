@@ -67,76 +67,26 @@ module Coalpit (
   -- * Options
   , Options(..)
   , defOpt
-  -- * Parsing and printing helpers
-  , Parser
-  , CLArg(..)
-  , pS
-  , readArg
-  , pTime
-  , timeArg
   ) where
 
-import Data.List
 import GHC.Generics
 import Text.Megaparsec
 import Text.Megaparsec.Char
-import Data.Char
-import Data.Proxy
-import Data.Semigroup
-import Data.Void
+import Data.Char (toLower)
+import Data.Proxy (Proxy(..))
 import qualified Data.List.NonEmpty as NE
-import Data.Word
-import Numeric.Natural
-import Data.Int
-import Data.Time.Clock
-import Data.Time.Format
-import Data.Time.Calendar
-import Data.Time.LocalTime
-import Data.Scientific
+import Data.Word (Word8, Word16, Word32, Word64)
+import Numeric.Natural (Natural)
+import Data.Int (Int8, Int16, Int32, Int64)
+import Data.Time.Clock (DiffTime, NominalDiffTime, UniversalTime, UTCTime)
+import Data.Time.Format ( TimeLocale, formatTime
+                        , iso8601DateFormat, defaultTimeLocale)
+import Data.Time.Calendar (Day)
+import Data.Time.LocalTime (TimeOfDay, LocalTime, ZonedTime)
+import Data.Scientific (Scientific, FPFormat(..), formatScientific, scientificP)
 import Text.ParserCombinators.ReadP (readP_to_S)
 
-
--- | Command-line argument wrapper, used to avoid orphan ShowToken
--- String and Stream [String] instances.
-newtype CLArg = CLArg { unArg :: String }
-  deriving (Ord, Eq)
-
--- | Advances by one token.
-advance :: Pos -> SourcePos -> t -> SourcePos
-advance _ (SourcePos n l c) _ = SourcePos n l (c <> pos1)
-
--- | A list of strings (command-line arguments) stream.
-instance Stream [CLArg] where
-  type Token [CLArg] = CLArg
-  type Tokens [CLArg] = [CLArg]
-  tokenToChunk Proxy = pure
-  tokensToChunk Proxy = id
-  chunkToTokens Proxy = id
-  chunkLength Proxy = length
-  chunkEmpty Proxy = null
-  advance1 Proxy = advance
-  advanceN Proxy w = foldl' (advance w)
-  take1_ [] = Nothing
-  take1_ (t:ts) = Just (t, ts)
-  takeN_ n s
-    | n <= 0    = Just ([], s)
-    | null s    = Nothing
-    | otherwise = Just (splitAt n s)
-  takeWhile_ = span
-
-instance ShowToken CLArg where
-  showTokens xs = concat $ NE.map unArg xs
-
--- | Command-line arguments parser.
-type Parser = Parsec Void [CLArg]
-
--- | Applies a String parser to a single argument.
-pS :: Parsec Void String a -> Parsec Void [CLArg] a
-pS p = try $ do
-  x <- token (Right . unArg) Nothing
-  case parse p "argument" x of
-    Left e -> fail $ show e
-    Right x' -> pure x'
+import Coalpit.Parsing
 
 
 -- | Printing and parsing options.
@@ -377,14 +327,6 @@ instance (Coalpit a) => GCoalpit (K1 i a) where
 
 -- Common types
 
--- | Reads an argument using its 'Read' instance.
-readArg :: Read a => Parser a
-readArg = do
-  x <- token (Right . unArg) Nothing
-  case reads x of
-    [(n, "")] -> pure n
-    _ -> fail $ "Failed to read: " ++ x
-
 instance Coalpit Int where
   argParser _ = readArg
   toArgs _ i = [show i]
@@ -482,64 +424,40 @@ instance Coalpit Scientific where
   argHelper _ _ _ = "SCIENTIFIC"
 
 
--- | Parses a time argument.
-pTime :: ParseTime a
-      => Options
-      -- ^ Options, to read 'timeLocale' from.
-      -> String
-      -- ^ Time format to use.
-      -> Parser a
-pTime opt tf = try $ do
-    x <- token (Right . unArg) Nothing
-    case readSTime False (timeLocale opt) tf x of
-      [(t, "")] -> pure t
-      _ -> fail "Failed to parse time"
-
--- | Composes a time argument.
-timeArg :: FormatTime t
-        => Options
-        -- ^ Options, to read 'timeLocale' from.
-        -> String
-        -- ^ Time format to use.
-        -> t
-        -- ^ Time value.
-        -> [String]
-timeArg opt tf t = [formatTime (timeLocale opt) tf t]
-
 -- | Uses 'dateTimeFormat'.
 instance Coalpit UTCTime where
-  argParser opt = pTime opt (dateTimeFormat opt)
-  toArgs opt = timeArg opt (dateTimeFormat opt)
+  argParser opt = pTime (timeLocale opt) (dateTimeFormat opt)
+  toArgs opt t = [formatTime (timeLocale opt) (dateTimeFormat opt) t]
   argHelper _ _ _ = "UTC_TIME"
 
 -- | Uses 'dateTimeFormat'.
 instance Coalpit ZonedTime where
-  argParser opt = pTime opt (dateTimeFormat opt)
-  toArgs opt = timeArg opt (dateTimeFormat opt)
+  argParser opt = pTime (timeLocale opt) (dateTimeFormat opt)
+  toArgs opt t = [formatTime (timeLocale opt) (dateTimeFormat opt) t]
   argHelper _ _ _ = "ZONED_TIME"
 
 -- | Uses 'dateTimeFormat'.
 instance Coalpit LocalTime where
-  argParser opt = pTime opt (dateTimeFormat opt)
-  toArgs opt = timeArg opt (dateTimeFormat opt)
+  argParser opt = pTime (timeLocale opt) (dateTimeFormat opt)
+  toArgs opt t = [formatTime (timeLocale opt) (dateTimeFormat opt) t]
   argHelper _ _ _ = "LOCAL_TIME"
 
 -- | Uses 'dateTimeFormat'.
 instance Coalpit UniversalTime where
-  argParser opt = pTime opt (dateTimeFormat opt)
-  toArgs opt = timeArg opt (dateTimeFormat opt)
+  argParser opt = pTime (timeLocale opt) (dateTimeFormat opt)
+  toArgs opt t = [formatTime (timeLocale opt) (dateTimeFormat opt) t]
   argHelper _ _ _ = "UNIVERSAL_TIME"
 
 -- | Uses 'timeFormat'.
 instance Coalpit TimeOfDay where
-  argParser opt = pTime opt (timeFormat opt)
-  toArgs opt = timeArg opt (timeFormat opt)
+  argParser opt = pTime (timeLocale opt) (timeFormat opt)
+  toArgs opt t = [formatTime (timeLocale opt) (timeFormat opt) t]
   argHelper _ _ _ = "TIME_OF_DAY"
 
 -- | Uses 'dateFormat'.
 instance Coalpit Day where
-  argParser opt = pTime opt (dateFormat opt)
-  toArgs opt = timeArg opt (dateFormat opt)
+  argParser opt = pTime (timeLocale opt) (dateFormat opt)
+  toArgs opt t = [formatTime (timeLocale opt) (dateFormat opt) t]
   argHelper _ _ _ = "DAY"
 
 -- | Converts to/from 'Scientific'.
