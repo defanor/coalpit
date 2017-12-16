@@ -171,6 +171,21 @@ instance (GCoalpit a, GCoalpit b) => GCoalpit (a :*: b) where
 
 -- Sums
 
+-- | Handles recursive constructors.
+handleRecCon :: GCoalpit a
+             => String
+             -- ^ Constructor name
+             -> Options
+             -> [String]
+             -> Proxy (a p)
+             -> String
+handleRecCon nameA opt path (Proxy :: Proxy (a p)) = conNameMod opt nameA
+  ++ if nameA `elem` path
+     then "..."
+     else case gArgHelper opt (nameA : path) (Proxy :: Proxy (a p)) of
+            "" -> ""
+            s -> ' ' : s
+
 instance (Constructor conA, GCoalpit a, GCoalpit (b :+: c)) =>
   GCoalpit ((b :+: c) :+: C1 conA a) where
   gArgParser opt =
@@ -185,13 +200,8 @@ instance (Constructor conA, GCoalpit a, GCoalpit (b :+: c)) =>
     in concat [ "("
               , gArgHelper opt path (Proxy :: Proxy ((b :+: c) p))
               , " | "
-              , conNameMod opt nameA
-              , if nameA `elem` path
-                then "..."
-                else spaceNonEmpty $
-                     gArgHelper opt (nameA : path) (Proxy :: Proxy (a p))
+              , handleRecCon nameA opt path (Proxy :: Proxy (a p))
               , ")"]
-
 
 instance (Constructor conA, GCoalpit a, GCoalpit (b :+: c)) =>
   GCoalpit (C1 conA a :+: (b :+: c)) where
@@ -205,11 +215,7 @@ instance (Constructor conA, GCoalpit a, GCoalpit (b :+: c)) =>
   gArgHelper opt path (Proxy :: Proxy ((C1 conA a :+: (b :+: c)) p)) =
     let nameA = conName (undefined :: C1 conA a p)
     in concat [ "("
-              , conNameMod opt nameA
-              , if nameA `elem` path
-                then "..."
-                else spaceNonEmpty $
-                     gArgHelper opt (nameA : path) (Proxy :: Proxy (a p))
+              , handleRecCon nameA opt path (Proxy :: Proxy (a p))
               , " | "
               , gArgHelper opt path (Proxy :: Proxy ((b :+: c) p))
               , ")"]
@@ -230,22 +236,10 @@ instance (Constructor conA, Constructor conB, GCoalpit a, GCoalpit b) =>
     let nameA = conName (undefined :: C1 conA a p)
         nameB = conName (undefined :: C1 conB b p)
     in concat [ "("
-              , conNameMod opt nameA
-              , if nameA `elem` path
-                then "..."
-                else spaceNonEmpty $
-                     gArgHelper opt (nameA : path) (Proxy :: Proxy (a p))
+              , handleRecCon nameA opt path (Proxy :: Proxy (a p))
               , " | "
-              , conNameMod opt nameB
-              , if nameB `elem` path
-                then "..."
-                else spaceNonEmpty $
-                     gArgHelper opt (nameB : path) (Proxy :: Proxy (b p))
+              , handleRecCon nameB opt path (Proxy :: Proxy (b p))
               , ")"]
-
-spaceNonEmpty :: String -> String
-spaceNonEmpty "" = ""
-spaceNonEmpty s = ' ' : s
 
 
 -- Record Selectors
