@@ -83,6 +83,15 @@ import Data.Proxy
 import Data.Semigroup
 import Data.Void
 import qualified Data.List.NonEmpty as NE
+import Data.Word
+import Numeric.Natural
+import Data.Int
+import Data.Time.Clock
+import Data.Time.Format
+import Data.Time.Calendar
+import Data.Time.LocalTime
+import Data.Scientific
+import Text.ParserCombinators.ReadP (readP_to_S)
 
 
 -- | Command-line argument wrapper, used to avoid orphan ShowToken
@@ -139,11 +148,20 @@ data Options = Options { conNameMod :: String -> String
                        , omitNamedOptions :: Bool
                        -- ^ Omit named Maybe values to indicate
                        -- 'Nothing'.
+                       , timeLocale :: TimeLocale
+                       , dateFormat :: String
+                       -- ^ See "Data.Time.Format".
+                       , timeFormat :: String
+                       , dateTimeFormat :: String
+                       , scientificFormat :: FPFormat
+                       , scientificDecimals :: Maybe Int
                        }
 
 -- | Default options.
 defOpt :: Options
 defOpt = Options (map toLower) (("--" ++) . map toLower) False True
+  defaultTimeLocale (iso8601DateFormat Nothing) "%H:%M:%S"
+  (iso8601DateFormat (Just "%H:%M:%S")) Generic Nothing
 
 -- | Coalpit class: parsing, printing, usage strings.
 class Coalpit a where
@@ -375,6 +393,51 @@ instance Coalpit Integer where
   toArgs _ i = [show i]
   argHelper _ _ _ = "INTEGER"
 
+instance Coalpit Word8 where
+  argParser _ = readArg
+  toArgs _ i = [show i]
+  argHelper _ _ _ = "WORD8"
+
+instance Coalpit Word16 where
+  argParser _ = readArg
+  toArgs _ i = [show i]
+  argHelper _ _ _ = "WORD16"
+
+instance Coalpit Word32 where
+  argParser _ = readArg
+  toArgs _ i = [show i]
+  argHelper _ _ _ = "WORD32"
+
+instance Coalpit Word64 where
+  argParser _ = readArg
+  toArgs _ i = [show i]
+  argHelper _ _ _ = "WORD64"
+
+instance Coalpit Int8 where
+  argParser _ = readArg
+  toArgs _ i = [show i]
+  argHelper _ _ _ = "INT8"
+
+instance Coalpit Int16 where
+  argParser _ = readArg
+  toArgs _ i = [show i]
+  argHelper _ _ _ = "INT16"
+
+instance Coalpit Int32 where
+  argParser _ = readArg
+  toArgs _ i = [show i]
+  argHelper _ _ _ = "INT32"
+
+instance Coalpit Int64 where
+  argParser _ = readArg
+  toArgs _ i = [show i]
+  argHelper _ _ _ = "INT64"
+
+instance Coalpit Natural where
+  argParser _ = readArg
+  toArgs _ i = [show i]
+  argHelper _ _ _ = "NATURAL"
+
 instance Coalpit Rational where
   argParser _ = readArg
   toArgs _ i = [show i]
@@ -385,22 +448,106 @@ instance Coalpit Double where
   toArgs _ i = [show i]
   argHelper _ _ _ = "DOUBLE"
 
+instance Coalpit Float where
+  argParser _ = readArg
+  toArgs _ i = [show i]
+  argHelper _ _ _ = "FLOAT"
+
+instance Coalpit Char where
+  argParser _ = readArg
+  toArgs _ c = [show c]
+  argHelper _ _ _ = "CHAR"
+
 instance {-#OVERLAPPING#-} Coalpit String where
   argParser _ = token (Right . unArg) Nothing
   toArgs _ i = [i]
   argHelper _ _ _ = "STRING"
 
+-- | A dot (".").
 instance Coalpit () where
   argParser _ = pS (char '.') *> pure ()
   toArgs _ () = ["."]
   argHelper _ _ _ = "."
 
+instance Coalpit Scientific where
+  argParser _ = try $ do
+    x <- token (Right . unArg) Nothing
+    case reverse $ readP_to_S scientificP x of
+      (n, ""):_ -> pure n
+      _ -> fail $ "Failed to read a scientific number: " ++ x
+  toArgs opt n = [formatScientific
+                  (scientificFormat opt) (scientificDecimals opt) n]
+  argHelper _ _ _ = "SCIENTIFIC"
+
+
+pTime :: ParseTime a => Options -> String -> Parser a
+pTime opt tf = try $ do
+    x <- token (Right . unArg) Nothing
+    case readSTime False (timeLocale opt) tf x of
+      [(t, "")] -> pure t
+      _ -> fail "Failed to parse time"
+
+timeArg :: FormatTime t => Options -> String -> t -> [String]
+timeArg opt tf t = [formatTime (timeLocale opt) tf t]
+
+-- | Uses 'dateTimeFormat'.
+instance Coalpit UTCTime where
+  argParser opt = pTime opt (dateTimeFormat opt)
+  toArgs opt = timeArg opt (dateTimeFormat opt)
+  argHelper _ _ _ = "UTC_TIME"
+
+-- | Uses 'dateTimeFormat'.
+instance Coalpit ZonedTime where
+  argParser opt = pTime opt (dateTimeFormat opt)
+  toArgs opt = timeArg opt (dateTimeFormat opt)
+  argHelper _ _ _ = "ZONED_TIME"
+
+-- | Uses 'dateTimeFormat'.
+instance Coalpit LocalTime where
+  argParser opt = pTime opt (dateTimeFormat opt)
+  toArgs opt = timeArg opt (dateTimeFormat opt)
+  argHelper _ _ _ = "LOCAL_TIME"
+
+-- | Uses 'dateTimeFormat'.
+instance Coalpit UniversalTime where
+  argParser opt = pTime opt (dateTimeFormat opt)
+  toArgs opt = timeArg opt (dateTimeFormat opt)
+  argHelper _ _ _ = "UNIVERSAL_TIME"
+
+-- | Uses 'timeFormat'.
+instance Coalpit TimeOfDay where
+  argParser opt = pTime opt (timeFormat opt)
+  toArgs opt = timeArg opt (timeFormat opt)
+  argHelper _ _ _ = "TIME_OF_DAY"
+
+-- | Uses 'dateFormat'.
+instance Coalpit Day where
+  argParser opt = pTime opt (dateFormat opt)
+  toArgs opt = timeArg opt (dateFormat opt)
+  argHelper _ _ _ = "DAY"
+
+-- | Converts to/from 'Scientific'.
+instance Coalpit NominalDiffTime where
+  argParser opt = fromRational . toRational
+                  <$> (argParser opt :: Parser Scientific)
+  toArgs opt = toArgs opt .
+    (fromRational . toRational :: NominalDiffTime -> Scientific)
+  argHelper _ _ _ = "NOMINAL_DIFF_TIME"
+
+-- | Converts to/from 'Scientific'.
+instance Coalpit DiffTime where
+  argParser opt = fromRational . toRational
+                  <$> (argParser opt :: Parser Scientific)
+  toArgs opt = toArgs opt .
+    (fromRational . toRational :: DiffTime -> Scientific)
+  argHelper _ _ _ = "DIFF_TIME"
+
+
 instance Coalpit Bool
 instance Coalpit a => Coalpit (Maybe a)
 instance Coalpit a => Coalpit [a]
+instance Coalpit a => Coalpit (NE.NonEmpty a)
 instance (Coalpit a, Coalpit b) => Coalpit (Either a b)
 instance (Coalpit a, Coalpit b) => Coalpit (a, b)
 instance (Coalpit a, Coalpit b, Coalpit c) => Coalpit (a, b, c)
 instance (Coalpit a, Coalpit b, Coalpit c, Coalpit d) => Coalpit (a, b, c, d)
-instance (Coalpit a, Coalpit b, Coalpit c, Coalpit d, Coalpit e) =>
-  Coalpit (a, b, c, d, e)

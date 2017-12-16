@@ -6,6 +6,8 @@ import Test.Tasty
 import Test.Tasty.QuickCheck as QC
 import Data.Proxy
 import Test.Tasty.Travis
+import Data.Word
+import Data.Int
 
 import Coalpit
 
@@ -22,14 +24,14 @@ data Record = Record { maybeInt :: Maybe Int
                      , maybeDouble :: Maybe Double
                      , str :: String
                      , listOfStrings :: [String]
-                     , maybeListOfNumbers :: Maybe [Integer]
+                     , maybeNonEmptyListOfNumbers :: Maybe [Integer]
                      , otherString :: String
                      } deriving (Generic, Eq, Show, Coalpit)
 instance Arbitrary Record where arbitrary = genericArbitraryU
 
 data Sum = Foo Int Bool
          | Bar
-         | Baz (String, (Double, Integer), Rational)
+         | Baz (Int8, (Float, Word16), Rational)
   deriving (Generic, Eq, Show, Coalpit)
 instance Arbitrary Sum where arbitrary = genericArbitraryU
 
@@ -56,7 +58,7 @@ instance Arbitrary NestedRecord where arbitrary = genericArbitraryU
 
 data NestedSum = NestedFoo Record
                | NestedBar Sum Basic Nested
-               | NestedBaz (Polymorphic Int Double)
+               | NestedBaz (Polymorphic Char Double)
                deriving (Generic, Eq, Show, Coalpit)
 instance Arbitrary NestedSum where arbitrary = genericArbitraryU
 
