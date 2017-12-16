@@ -85,6 +85,10 @@ import Data.Time.Calendar (Day)
 import Data.Time.LocalTime (TimeOfDay, LocalTime, ZonedTime)
 import Data.Scientific (Scientific, FPFormat(..), formatScientific, scientificP)
 import Text.ParserCombinators.ReadP (readP_to_S)
+import Data.Complex (Complex)
+import Data.Version (Version, parseVersion, showVersion)
+import System.Exit (ExitCode)
+import Network.URI (URI, parseURIReference, uriToString)
 
 import Coalpit.Parsing
 
@@ -107,13 +111,15 @@ data Options = Options { conNameMod :: String -> String
                        , dateTimeFormat :: String
                        , scientificFormat :: FPFormat
                        , scientificDecimals :: Maybe Int
+                       , uriUserInfo :: String -> String
+                       -- ^ Used to map the userinfo part of the URI.
                        }
 
 -- | Default options.
 defOpt :: Options
 defOpt = Options (map toLower) (("--" ++) . map toLower) False True
   defaultTimeLocale (iso8601DateFormat Nothing) "%H:%M:%S"
-  (iso8601DateFormat (Just "%H:%M:%S")) Generic Nothing
+  (iso8601DateFormat (Just "%H:%M:%S")) Generic Nothing id
 
 -- | Coalpit class: parsing, printing, usage strings.
 class Coalpit a where
@@ -423,6 +429,23 @@ instance Coalpit Scientific where
                   (scientificFormat opt) (scientificDecimals opt) n]
   argHelper _ _ _ = "SCIENTIFIC"
 
+instance Coalpit Version where
+  argParser _ = try $ do
+    x <- token (Right . unArg) Nothing
+    case reverse $ readP_to_S parseVersion x of
+      (v, ""):_ -> pure v
+      _ -> fail $ "Failed to read a version: " ++ x
+  toArgs _ v = [showVersion v]
+  argHelper _ _ _ = "VERSION"
+
+-- | An URI reference (absolute or relative).
+instance Coalpit URI where
+  argParser _ = try $ do
+    x <- token (Right . unArg) Nothing
+    maybe (fail $ "Failed to parse URI: " ++ x) pure (parseURIReference x)
+  toArgs opt u = [uriToString (uriUserInfo opt) u ""]
+  argHelper _ _ _ = "URI"
+
 
 -- | Uses 'dateTimeFormat'.
 instance Coalpit UTCTime where
@@ -478,6 +501,9 @@ instance Coalpit DiffTime where
 
 
 instance Coalpit Bool
+instance Coalpit Ordering
+instance Coalpit ExitCode
+instance Coalpit a => Coalpit (Complex a)
 instance Coalpit a => Coalpit (Maybe a)
 instance Coalpit a => Coalpit [a]
 instance Coalpit a => Coalpit (NE.NonEmpty a)

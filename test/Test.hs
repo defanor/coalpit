@@ -8,6 +8,7 @@ import Data.Proxy
 import Test.Tasty.Travis
 import Data.Word
 import Data.Int
+import Data.Complex
 
 import Coalpit
 
@@ -31,7 +32,7 @@ instance Arbitrary Record where arbitrary = genericArbitraryU
 
 data Sum = Foo Int Bool
          | Bar
-         | Baz (Int8, (Float, Word16), Rational)
+         | Baz (Int8, (Complex Float, Word16), Rational)
   deriving (Generic, Eq, Show, Coalpit)
 instance Arbitrary Sum where arbitrary = genericArbitraryU
 
