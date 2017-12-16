@@ -21,7 +21,7 @@ import Coalpit
 
 data Foo = Foo { bar :: Maybe Int
                , baz :: String
-               } deriving (Show, Generic, Coalpit)
+               } deriving (Show, Generic, 'Coalpit')
 
 main :: IO ()
 main = do
@@ -59,7 +59,7 @@ Then, in a shell:
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Coalpit (
-  -- * Core classes
+  -- * Core class
   Coalpit(..)
   -- * Utility functions
   , fromArgs
@@ -67,11 +67,13 @@ module Coalpit (
   -- * Options
   , Options(..)
   , defOpt
-  -- * Parsing helpers
+  -- * Parsing and printing helpers
   , Parser
   , CLArg(..)
   , pS
   , readArg
+  , pTime
+  , timeArg
   ) where
 
 import Data.List
@@ -480,14 +482,28 @@ instance Coalpit Scientific where
   argHelper _ _ _ = "SCIENTIFIC"
 
 
-pTime :: ParseTime a => Options -> String -> Parser a
+-- | Parses a time argument.
+pTime :: ParseTime a
+      => Options
+      -- ^ Options, to read 'timeLocale' from.
+      -> String
+      -- ^ Time format to use.
+      -> Parser a
 pTime opt tf = try $ do
     x <- token (Right . unArg) Nothing
     case readSTime False (timeLocale opt) tf x of
       [(t, "")] -> pure t
       _ -> fail "Failed to parse time"
 
-timeArg :: FormatTime t => Options -> String -> t -> [String]
+-- | Composes a time argument.
+timeArg :: FormatTime t
+        => Options
+        -- ^ Options, to read 'timeLocale' from.
+        -> String
+        -- ^ Time format to use.
+        -> t
+        -- ^ Time value.
+        -> [String]
 timeArg opt tf t = [formatTime (timeLocale opt) tf t]
 
 -- | Uses 'dateTimeFormat'.
