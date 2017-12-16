@@ -13,7 +13,7 @@ scripting-friendly than JSON and similar formats.
 == Example
 
 @
-\{\-\# LANGUAGE DeriveGeneric \#\-\}
+\{\-\# LANGUAGE DeriveGeneric, DeriveAnyClass \#\-\}
 import GHC.Generics
 import Data.Proxy
 import System.Environment
@@ -21,10 +21,7 @@ import Coalpit
 
 data Foo = Foo { bar :: Maybe Int
                , baz :: String
-               } deriving (Generic, Show)
-instance 'ArgParser' Foo
-instance 'ToArgs' Foo
-instance 'ArgHelper' Foo
+               } deriving (Show, Generic, Coalpit)
 
 main :: IO ()
 main = do
@@ -63,9 +60,7 @@ Then, in a shell:
 
 module Coalpit (
   -- * Core classes
-  ArgParser(..)
-  , ToArgs(..)
-  , ArgHelper(..)
+  Coalpit(..)
   -- * Utility functions
   , fromArgs
   , usage
@@ -150,273 +145,214 @@ data Options = Options { conNameMod :: String -> String
 defOpt :: Options
 defOpt = Options (map toLower) (("--" ++) . map toLower) False True
 
-
--- Core classes
-
--- | Arguments parser class.
-class ArgParser a where
+-- | Coalpit class: parsing, printing, usage strings.
+class Coalpit a where
   argParser :: Options -> Parser a
-  default argParser :: (Generic a, GArgParser (Rep a)) => Options -> Parser a
-  argParser o = to <$> gArgParser o
+  default argParser :: (Generic a, GCoalpit (Rep a)) => Options -> Parser a
+  argParser opt = to <$> gArgParser opt
 
-class GArgParser f where
-  gArgParser :: Options -> Parser (f a)
+  toArgs :: Options -> a -> [String]
+  default toArgs :: (Generic a, GCoalpit (Rep a)) => Options -> a -> [String]
+  toArgs opt a = gToArgs opt (from a)
+
+  argHelper :: Options -> [String] -> Proxy a -> String
+  default argHelper :: (GCoalpit (Rep a))
+                    => Options -> [String] -> Proxy a -> String
+  argHelper opt path Proxy = gArgHelper opt path (Proxy :: Proxy (Rep a p))
+
+class GCoalpit a where
+  gArgParser :: Options -> Parser (a p)
+  gToArgs :: Options -> a p -> [String]
+  gArgHelper :: Options -> [String] -> Proxy (a p) -> String
 
 -- | Parses arguments.
-fromArgs :: ArgParser a => Options -> [String] -> Either String a
-fromArgs o args = case parse (argParser o) "arguments" (map CLArg args) of
+fromArgs :: Coalpit a => Options -> [String] -> Either String a
+fromArgs opt args = case parse (argParser opt) "arguments" (map CLArg args) of
   Left err -> Left $ parseErrorPretty err
   Right x -> Right x
 
--- | Arguments serializer class.
-class ToArgs a where
-  toArgs :: Options -> a -> [String]
-  default toArgs :: (Generic a, GToArgs (Rep a)) => Options -> a -> [String]
-  toArgs o a = gToArgs o (from a)
-
-class GToArgs f where
-  gToArgs :: Options -> f a -> [String]
-
--- | Helper class.
-class ArgHelper a where
-  argHelper :: Options -> [String] -> Proxy a -> String
-  default argHelper :: (GArgHelper (Rep a))
-                    => Options -> [String] -> Proxy a -> String
-  argHelper o path Proxy = gArgHelper o path (Proxy :: Proxy (Rep a f))
-
-class GArgHelper f where
-  gArgHelper :: Options -> [String] -> Proxy (f a) -> String
-
 -- | Composes a usage string.
-usage :: ArgHelper a => Options -> Proxy a -> String
-usage o = argHelper o []
+usage :: Coalpit a => Options -> Proxy a -> String
+usage opt = argHelper opt []
+
 
 -- Units
-
-instance GArgParser U1 where
+instance GCoalpit U1 where
   gArgParser _ = pure U1
-
-instance GToArgs U1 where
   gToArgs _ U1 = []
-
-instance GArgHelper U1 where
   gArgHelper _ _ (Proxy :: Proxy (U1 f)) = ""
 
+
 -- Products
-
-instance (GArgParser a, GArgParser b) => GArgParser (a :*: b) where
-  gArgParser m = (:*:) <$> gArgParser m <*> gArgParser m
-
-instance (GToArgs a, GToArgs b) => GToArgs (a :*: b) where
-  gToArgs m (a :*: b) = gToArgs m a ++ gToArgs m b
-
-instance (GArgHelper a, GArgHelper b) => GArgHelper (a :*: b) where
-  gArgHelper m path (Proxy :: Proxy ((a :*: b) f)) =
-    concat [ gArgHelper m path (Proxy :: Proxy (a f))
+instance (GCoalpit a, GCoalpit b) => GCoalpit (a :*: b) where
+  gArgParser opt = (:*:) <$> gArgParser opt <*> gArgParser opt
+  gToArgs opt (x :*: y) = gToArgs opt x ++ gToArgs opt y
+  gArgHelper opt path (Proxy :: Proxy ((a :*: b) p)) =
+    concat [ gArgHelper opt path (Proxy :: Proxy (a p))
            , " "
-           , gArgHelper m path (Proxy :: Proxy (b f))]
+           , gArgHelper opt path (Proxy :: Proxy (b p))]
 
 
 -- Sums
 
-instance (Constructor c1, GArgParser f1, GArgParser (f :+: g)) =>
-  GArgParser ((f :+: g) :+: C1 c1 f1) where
-  gArgParser m =
-    L1 <$> gArgParser m
+instance (Constructor conA, GCoalpit a, GCoalpit (b :+: c)) =>
+  GCoalpit ((b :+: c) :+: C1 conA a) where
+  gArgParser opt =
+    L1 <$> gArgParser opt
     <|>
-    R1 <$> (pS (string (conNameMod m $ conName (undefined :: C1 c1 f a)))
-            *> gArgParser m)
+    R1 <$> (pS (string (conNameMod opt $ conName (undefined :: C1 conA a p)))
+            *> gArgParser opt)
+  gToArgs opt (L1 x) = gToArgs opt x
+  gToArgs opt (R1 x) = conNameMod opt (conName x) : gToArgs opt x
+  gArgHelper opt path (Proxy :: Proxy (((b :+: c) :+: C1 conA a) p)) =
+    let nameA = conName (undefined :: C1 conA f p)
+    in concat [ "("
+              , gArgHelper opt path (Proxy :: Proxy ((b :+: c) p))
+              , " | "
+              , conNameMod opt nameA
+              , if nameA `elem` path
+                then "..."
+                else spaceNonEmpty $
+                     gArgHelper opt (nameA : path) (Proxy :: Proxy (a p))
+              , ")"]
 
-instance (Constructor c1, GArgParser f1, GArgParser (f :+: g)) =>
-  GArgParser (C1 c1 f1 :+: (f :+: g)) where
-  gArgParser m =
-    L1 <$> (pS (string (conNameMod m $ conName (undefined :: C1 c1 f a)))
-            *> gArgParser m)
+
+instance (Constructor conA, GCoalpit a, GCoalpit (b :+: c)) =>
+  GCoalpit (C1 conA a :+: (b :+: c)) where
+  gArgParser opt =
+    L1 <$> (pS (string (conNameMod opt $ conName (undefined :: C1 conA a p)))
+            *> gArgParser opt)
     <|>
-    R1 <$> gArgParser m
+    R1 <$> gArgParser opt
+  gToArgs opt (L1 x) = conNameMod opt (conName x) : gToArgs opt x
+  gToArgs opt (R1 x) = gToArgs opt x
+  gArgHelper opt path (Proxy :: Proxy ((C1 conA a :+: (b :+: c)) p)) =
+    let nameA = conName (undefined :: C1 conA a p)
+    in concat [ "("
+              , conNameMod opt nameA
+              , if nameA `elem` path
+                then "..."
+                else spaceNonEmpty $
+                     gArgHelper opt (nameA : path) (Proxy :: Proxy (a p))
+              , " | "
+              , gArgHelper opt path (Proxy :: Proxy ((b :+: c) p))
+              , ")"]
 
-instance (Constructor c1, Constructor c2, GArgParser f1, GArgParser f2) =>
-  GArgParser (C1 c1 f1 :+: C1 c2 f2) where
-  gArgParser m =
-    L1 <$> (pS (string (conNameMod m $ conName (undefined :: C1 c1 f a)))
-            *> gArgParser m)
+instance (Constructor conA, Constructor conB, GCoalpit a, GCoalpit b) =>
+  GCoalpit (C1 conA a :+: C1 conB b) where
+  gArgParser opt =
+    L1 <$> (pS (string (conNameMod opt $
+                        conName (undefined :: C1 conA a p)))
+            *> gArgParser opt)
     <|>
-    R1 <$> (pS (string (conNameMod m $ conName (undefined :: C1 c2 f a)))
-            *> gArgParser m)
-
-instance (Constructor c1, GToArgs f1, GToArgs (f :+: g)) =>
-  GToArgs ((f :+: g) :+: C1 c1 f1) where
-  gToArgs m (L1 x) = gToArgs m x
-  gToArgs m (R1 x) = conNameMod m (conName x) : gToArgs m x
-
-instance (Constructor c1, GToArgs f1, GToArgs (f :+: g)) =>
-  GToArgs (C1 c1 f1 :+: (f :+: g)) where
-  gToArgs m (L1 x) = conNameMod m (conName x) : gToArgs m x
-  gToArgs m (R1 x) = gToArgs m x
-
-instance (Constructor c1, Constructor c2, GToArgs f1, GToArgs f2) =>
-  GToArgs (C1 c1 f1 :+: C1 c2 f2) where
-  gToArgs m (L1 x) = conNameMod m (conName x) : gToArgs m x
-  gToArgs m (R1 x) = conNameMod m (conName x) : gToArgs m x
+    R1 <$> (pS (string (conNameMod opt $
+                        conName (undefined :: C1 conB b p)))
+            *> gArgParser opt)
+  gToArgs opt (L1 x) = conNameMod opt (conName x) : gToArgs opt x
+  gToArgs opt (R1 x) = conNameMod opt (conName x) : gToArgs opt x
+  gArgHelper opt path (Proxy :: Proxy ((C1 conA a :+: C1 conB b) p)) =
+    let nameA = conName (undefined :: C1 conA a p)
+        nameB = conName (undefined :: C1 conB b p)
+    in concat [ "("
+              , conNameMod opt nameA
+              , if nameA `elem` path
+                then "..."
+                else spaceNonEmpty $
+                     gArgHelper opt (nameA : path) (Proxy :: Proxy (a p))
+              , " | "
+              , conNameMod opt nameB
+              , if nameB `elem` path
+                then "..."
+                else spaceNonEmpty $
+                     gArgHelper opt (nameB : path) (Proxy :: Proxy (b p))
+              , ")"]
 
 spaceNonEmpty :: String -> String
 spaceNonEmpty "" = ""
 spaceNonEmpty s = ' ' : s
 
-instance (Constructor c1, GArgHelper f1, GArgHelper (f :+: g)) =>
-  GArgHelper ((f :+: g) :+: C1 c1 f1) where
-  gArgHelper m path (Proxy :: Proxy (((f :+: g) :+: C1 c1 f1) p)) =
-    let cName1 = conName (undefined :: C1 c1 f a)
-    in concat [ "("
-              , gArgHelper m path (Proxy :: Proxy ((f :+: g) p))
-              , " | "
-              , conNameMod m cName1
-              , if cName1 `elem` path
-                then "..."
-                else spaceNonEmpty $
-                     gArgHelper m (cName1 : path) (Proxy :: Proxy (f1 p))
-              , ")"]
-
-instance (Constructor c1, GArgHelper f1, GArgHelper (f :+: g)) =>
-  GArgHelper (C1 c1 f1 :+: (f :+: g)) where
-  gArgHelper m path (Proxy :: Proxy ((C1 c1 f1 :+: (f :+: g)) p)) =
-    let cName1 = conName (undefined :: C1 c1 f a)
-    in concat [ "("
-              , conNameMod m cName1
-              , if cName1 `elem` path
-                then "..."
-                else spaceNonEmpty $
-                     gArgHelper m (cName1 : path) (Proxy :: Proxy (f1 p))
-              , " | "
-              , gArgHelper m path (Proxy :: Proxy ((f :+: g) p))
-              , ")"]
-
-instance (Constructor c1, Constructor c2, GArgHelper f1, GArgHelper f2) =>
-  GArgHelper (C1 c1 f1 :+: C1 c2 f2) where
-  gArgHelper m path (Proxy :: Proxy ((C1 c1 f1 :+: C1 c2 f2) p)) =
-    let cName1 = conName (undefined :: C1 c1 f a)
-        cName2 = conName (undefined :: C1 c2 f a)
-    in concat [ "("
-              , conNameMod m cName1
-              , if cName1 `elem` path
-                then "..."
-                else spaceNonEmpty $
-                     gArgHelper m (cName1 : path) (Proxy :: Proxy (f1 p))
-              , " | "
-              , conNameMod m cName2
-              , if cName2 `elem` path
-                then "..."
-                else spaceNonEmpty $
-                     gArgHelper m (cName2 : path) (Proxy :: Proxy (f2 p))
-              , ")"]
-
 
 -- Record Selectors
 
-parseS1 :: (GArgParser a) => String -> Options -> Parser (S1 c a f)
-parseS1 n o =
-  let sname = case (n, alwaysUseSelName o) of
+parseS1 :: (GCoalpit a) => String -> Options -> Parser (S1 selA a p)
+parseS1 nameA opt =
+  let sName = case (nameA, alwaysUseSelName opt) of
         ("", _) -> pure ()
         (_, False) -> pure ()
-        (name, True) -> pS (string (selNameMod o name)) >> pure ()
-  in M1 <$> (sname *> gArgParser o)
+        (_, True) -> pS (string (selNameMod opt nameA)) >> pure ()
+  in M1 <$> (sName *> gArgParser opt)
 
-printS1 :: (GToArgs f, Selector c) => Options -> S1 c f a -> [String]
-printS1 o s@(M1 x) = case (selName s, alwaysUseSelName o) of
-                       ("", _) -> gToArgs o x
-                       (_, False) -> gToArgs o x
-                       (name, True) -> selNameMod o name : gToArgs o x
+printS1 :: (GCoalpit a, Selector selA) => Options -> S1 selA a p -> [String]
+printS1 opt sel@(M1 x) = case (selName sel, alwaysUseSelName opt) of
+                           ("", _) -> gToArgs opt x
+                           (_, False) -> gToArgs opt x
+                           (name, True) -> selNameMod opt name : gToArgs opt x
 
-helpS1 :: (GArgHelper a)
-       => String -> Options -> [String] -> Proxy (S1 c a f) -> String
-helpS1 n o path (Proxy :: Proxy ((S1 c a) f)) =
-  case (n, alwaysUseSelName o) of
-    ("", _) -> gArgHelper o path (Proxy :: Proxy (a f))
-    (_, False) -> gArgHelper o path (Proxy :: Proxy (a f))
-    (name, True) -> concat [ selNameMod o name
-                           , " "
-                           , gArgHelper o path (Proxy :: Proxy (a f))]
+helpS1 :: (GCoalpit a)
+       => String -> Options -> [String] -> Proxy (S1 selA a p) -> String
+helpS1 nameA opt path (Proxy :: Proxy (S1 selA a p)) =
+  case (nameA, alwaysUseSelName opt) of
+    ("", _) -> gArgHelper opt path (Proxy :: Proxy (a p))
+    (_, False) -> gArgHelper opt path (Proxy :: Proxy (a p))
+    (_, True) -> concat [ selNameMod opt nameA
+                        , " "
+                        , gArgHelper opt path (Proxy :: Proxy (a p))]
 
-instance (GArgParser a, Selector c) => GArgParser (S1 c a) where
-  gArgParser = parseS1 (selName (undefined :: S1 c a f))
-
-instance (GToArgs a, Selector c) => GToArgs (S1 c a) where
+instance (GCoalpit a, Selector selA) => GCoalpit (S1 selA a) where
+  gArgParser = parseS1 (selName (undefined :: S1 selA a p))
   gToArgs = printS1
-
-instance (GArgHelper a, Selector c) => GArgHelper (S1 c a) where
-  gArgHelper = helpS1 (selName (undefined :: S1 c a f))
-
+  gArgHelper = helpS1 (selName (undefined :: S1 selA a p))
 
 -- Optional arguments
-
 instance {-#OVERLAPPING#-}
-  (ArgParser a, Selector c) => GArgParser (S1 c (Rec0 (Maybe a))) where
-  gArgParser m =
-    let n = selName (undefined :: S1 c (Rec0 (Maybe a)) f)
-    in case (omitNamedOptions m, null n) of
-      (True, True) -> M1 <$> gArgParser m
+  (Coalpit a, Selector selA) => GCoalpit (S1 selA (Rec0 (Maybe a))) where
+  gArgParser opt =
+    let nameA = selName (undefined :: S1 selA (Rec0 (Maybe a)) p)
+    in case (omitNamedOptions opt, null nameA) of
+      (True, True) -> M1 <$> gArgParser opt
       (True, False) ->
-        M1 . K1 <$> optional (pS (string (selNameMod m n)) *> argParser m)
-      _ -> parseS1 n m
-
-instance {-#OVERLAPPING#-}
-  (ToArgs a, Selector c) => GToArgs (S1 c (Rec0 (Maybe a))) where
-  gToArgs m s@(M1 (K1 x))
-    | omitNamedOptions m = case (selName s, x) of
-        ("", _) -> toArgs m x
+        M1 . K1
+        <$> optional (pS (string (selNameMod opt nameA)) *> argParser opt)
+      _ -> parseS1 nameA opt
+  gToArgs opt sel@(M1 (K1 x))
+    | omitNamedOptions opt = case (selName sel, x) of
+        ("", _) -> toArgs opt x
         (_, Nothing) -> []
-        (name, Just x') -> selNameMod m name : toArgs m x'
-    | otherwise = printS1 m s
-
-instance {-#OVERLAPPING#-}
-  (ArgHelper a, Selector c) => GArgHelper (S1 c (Rec0 (Maybe a))) where
-  gArgHelper m path (Proxy :: Proxy (S1 c (Rec0 (Maybe a)) f)) =
-    let n = selName (undefined :: S1 c (Rec0 (Maybe a)) f)
-    in case (omitNamedOptions m, null n) of
-      (True, True) -> gArgHelper m path (Proxy :: Proxy (Rec0 (Maybe a) f))
+        (nameA, Just x') -> selNameMod opt nameA : toArgs opt x'
+    | otherwise = printS1 opt sel
+  gArgHelper opt path (Proxy :: Proxy (S1 selA (Rec0 (Maybe a)) p)) =
+    let nameA = selName (undefined :: S1 selA (Rec0 (Maybe a)) p)
+    in case (omitNamedOptions opt, null nameA) of
+      (True, True) -> gArgHelper opt path (Proxy :: Proxy (Rec0 (Maybe a) p))
       (True, False) -> concat [ "["
-                              , selNameMod m n
+                              , selNameMod opt nameA
                               , " "
-                              , gArgHelper m path (Proxy :: Proxy (Rec0 a f))
+                              , gArgHelper opt path (Proxy :: Proxy (Rec0 a p))
                               , "]"]
-      _ -> helpS1 n m path (Proxy :: Proxy (S1 c (Rec0 (Maybe a)) f))
+      _ -> helpS1 nameA opt path (Proxy :: Proxy (S1 selA (Rec0 (Maybe a)) p))
 
 
 -- Constructors
 
-instance (GArgParser a) => GArgParser (C1 c a) where
-  gArgParser m = M1 <$> gArgParser m
-
-instance (GToArgs a) => GToArgs (C1 c a) where
-  gToArgs m (M1 x) = gToArgs m x
-
-instance (GArgHelper a) => GArgHelper (C1 c a) where
-  gArgHelper m path (Proxy :: Proxy (C1 c a f)) =
-    gArgHelper m path (Proxy :: Proxy (a f))
+instance (GCoalpit a) => GCoalpit (C1 conA a) where
+  gArgParser = fmap M1 . gArgParser
+  gToArgs opt (M1 x) = gToArgs opt x
+  gArgHelper opt path (Proxy :: Proxy (C1 conA a p)) =
+    gArgHelper opt path (Proxy :: Proxy (a p))
 
 -- Data types
-
-instance (GArgParser a) => GArgParser (D1 c a) where
-  gArgParser m = M1 <$> gArgParser m
-
-instance (GToArgs a) => GToArgs (D1 c a) where
-  gToArgs m (M1 x) = gToArgs m x
-
-instance (GArgHelper a) => GArgHelper (D1 c a) where
-  gArgHelper m path (Proxy :: Proxy (D1 c a f)) =
-    gArgHelper m path (Proxy :: Proxy (a f))
+instance (GCoalpit a) => GCoalpit (D1 conA a) where
+  gArgParser = fmap M1 . gArgParser
+  gToArgs opt (M1 x) = gToArgs opt x
+  gArgHelper opt path (Proxy :: Proxy (D1 conA a p)) =
+    gArgHelper opt path (Proxy :: Proxy (a p))
 
 -- Constraints and such
-
-instance (ArgParser a) => GArgParser (K1 i a) where
-  gArgParser m = K1 <$> argParser m
-
-instance (ToArgs a) => GToArgs (K1 i a) where
-  gToArgs m (K1 x) = toArgs m x
-
-instance (ArgHelper a) => GArgHelper (K1 i a) where
-  gArgHelper m path (Proxy :: Proxy (K1 x a f)) =
-    argHelper m path (Proxy :: Proxy a)
+instance (Coalpit a) => GCoalpit (K1 i a) where
+  gArgParser = fmap K1 . argParser
+  gToArgs opt (K1 x) = toArgs opt x
+  gArgHelper opt path (Proxy :: Proxy (K1 x a p)) =
+    argHelper opt path (Proxy :: Proxy a)
 
 
 -- Common types
@@ -429,83 +365,42 @@ readArg = do
     [(n, "")] -> pure n
     _ -> fail $ "Failed to read: " ++ x
 
-instance ArgParser Int where
+instance Coalpit Int where
   argParser _ = readArg
-instance ToArgs Int where
   toArgs _ i = [show i]
-instance ArgHelper Int where
   argHelper _ _ _ = "INT"
 
-instance ArgParser Integer where
+instance Coalpit Integer where
   argParser _ = readArg
-instance ToArgs Integer where
   toArgs _ i = [show i]
-instance ArgHelper Integer where
   argHelper _ _ _ = "INTEGER"
 
-instance ArgParser Rational where
+instance Coalpit Rational where
   argParser _ = readArg
-instance ToArgs Rational where
   toArgs _ i = [show i]
-instance ArgHelper Rational where
   argHelper _ _ _ = "RATIONAL"
 
-instance ArgParser Double where
+instance Coalpit Double where
   argParser _ = readArg
-instance ToArgs Double where
   toArgs _ i = [show i]
-instance ArgHelper Double where
   argHelper _ _ _ = "DOUBLE"
 
-instance {-#OVERLAPPING#-} ArgParser String where
+instance {-#OVERLAPPING#-} Coalpit String where
   argParser _ = token (Right . unArg) Nothing
-instance {-#OVERLAPPING#-} ToArgs String where
   toArgs _ i = [i]
-instance {-#OVERLAPPING#-} ArgHelper String where
   argHelper _ _ _ = "STRING"
 
-instance ArgParser Bool
-instance ToArgs Bool
-instance ArgHelper Bool
-
-instance ArgParser a => ArgParser (Maybe a)
-instance ToArgs a => ToArgs (Maybe a)
-instance ArgHelper a => ArgHelper (Maybe a)
-
-instance ArgParser a => ArgParser [a]
-instance ToArgs a => ToArgs [a]
-instance ArgHelper a => ArgHelper [a]
-
-instance (ArgParser a, ArgParser b) => ArgParser (Either a b)
-instance (ToArgs a, ToArgs b) => ToArgs (Either a b)
-instance (ArgHelper a, ArgHelper b) => ArgHelper (Either a b)
-
--- | Expects a dot.
-instance ArgParser () where
+instance Coalpit () where
   argParser _ = pS (char '.') *> pure ()
--- | Shows a dot.
-instance ToArgs () where
   toArgs _ () = ["."]
-instance ArgHelper () where
   argHelper _ _ _ = "."
 
-instance (ArgParser a, ArgParser b) => ArgParser (a, b)
-instance (ToArgs a, ToArgs b) => ToArgs (a, b)
-instance (ArgHelper a, ArgHelper b) => ArgHelper (a, b)
-
-instance (ArgParser a, ArgParser b, ArgParser c) => ArgParser (a, b, c)
-instance (ToArgs a, ToArgs b, ToArgs c) => ToArgs (a, b, c)
-instance (ArgHelper a, ArgHelper b, ArgHelper c) => ArgHelper (a, b, c)
-
-instance (ArgParser a, ArgParser b, ArgParser c, ArgParser d) =>
-  ArgParser (a, b, c, d)
-instance (ToArgs a, ToArgs b, ToArgs c, ToArgs d) => ToArgs (a, b, c, d)
-instance (ArgHelper a, ArgHelper b, ArgHelper c, ArgHelper d) =>
-  ArgHelper (a, b, c, d)
-
-instance (ArgParser a, ArgParser b, ArgParser c, ArgParser d, ArgParser e) =>
-  ArgParser (a, b, c, d, e)
-instance (ToArgs a, ToArgs b, ToArgs c, ToArgs d, ToArgs e) =>
-  ToArgs (a, b, c, d, e)
-instance (ArgHelper a, ArgHelper b, ArgHelper c, ArgHelper d, ArgHelper e) =>
-  ArgHelper (a, b, c, d, e)
+instance Coalpit Bool
+instance Coalpit a => Coalpit (Maybe a)
+instance Coalpit a => Coalpit [a]
+instance (Coalpit a, Coalpit b) => Coalpit (Either a b)
+instance (Coalpit a, Coalpit b) => Coalpit (a, b)
+instance (Coalpit a, Coalpit b, Coalpit c) => Coalpit (a, b, c)
+instance (Coalpit a, Coalpit b, Coalpit c, Coalpit d) => Coalpit (a, b, c, d)
+instance (Coalpit a, Coalpit b, Coalpit c, Coalpit d, Coalpit e) =>
+  Coalpit (a, b, c, d, e)

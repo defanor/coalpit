@@ -1,5 +1,5 @@
 name:                coalpit
-version:             0.1.0.1
+version:             0.1.0.2
 synopsis:            Command-line options parsing and printing
 description:         This library generates parsers and printers for given
                      data types, in the form of command-line arguments -- so
