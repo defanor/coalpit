@@ -34,11 +34,11 @@ data Test = Test { foo :: [Int], bar :: Maybe String }
 
 help :: IO ()
 help = do
-  mapM_ (\(o, x, y) -> print o >> print x >> putStrLn y) $
+  mapM_ (\(o, x, y) -> print o >> putStr x >> putStrLn y) $
     [ let opts = defOpt { alwaysUseSelName = ausn
                         , omitNamedOptions = ono }
       in ( (ausn, ono)
-         , toArgs opts (Test [] vals)
+         , showDSV opts [Test [1,2,3] vals]
          , argHelper opts [] (Proxy :: Proxy Test))
       | ausn <- [True, False]
       , ono <- [True, False]

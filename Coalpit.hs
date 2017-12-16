@@ -1,5 +1,5 @@
 {- |
-Description :  Command-line options parsing and printing
+Description :  Command-line options and DSV parsing and printing
 Maintainer  :  defanor <defanor@uberspace.net>
 Stability   :  unstable
 Portability :  non-portable (uses GHC extensions)
@@ -33,6 +33,8 @@ main = do
     Right x -> do
       print (x :: Foo)
       print $ 'toArgs' 'defOpt' x
+      putStr $ 'showDSV' 'defOpt' [x]
+      print ('readDSV' 'defOpt' $ 'showDSV' 'defOpt' [x] :: [Either String Foo])
 @
 
 Then, in a shell:
@@ -40,9 +42,13 @@ Then, in a shell:
 > $ ./Example 'a string'
 > Foo {bar = Nothing, baz = "a string"}
 > ["a string"]
+> "a string"
+> [Right (Foo {bar = Nothing, baz = "a string"})]
 > $ ./Example --bar 42 'a string'
 > Foo {bar = Just 42, baz = "a string"}
 > ["--bar","42","a string"]
+> --bar 42 "a string"
+> [Right (Foo {bar = Just 42, baz = "a string"})]
 > $ ./Example --bar foo
 > arguments:1:3:
 > Failed to read: foo
@@ -64,6 +70,8 @@ module Coalpit (
   -- * Utility functions
   , fromArgs
   , usage
+  , showDSV
+  , readDSV
   -- * Options
   , Options(..)
   , defOpt
@@ -91,10 +99,14 @@ import System.Exit (ExitCode)
 import Network.URI (URI, parseURIReference, uriToString)
 
 import Coalpit.Parsing
+import Coalpit.DSV
 
 
 -- | Printing and parsing options.
-data Options = Options { conNameMod :: String -> String
+data Options = Options { fieldSeparator :: Char
+                       -- ^ DSV field separator ('showDSV',
+                       -- 'readDSV').
+                       , conNameMod :: String -> String
                        -- ^ Constructor name modifier.
                        , selNameMod :: String -> String
                        -- ^ Record selector name modifier.
@@ -112,12 +124,12 @@ data Options = Options { conNameMod :: String -> String
                        , scientificFormat :: FPFormat
                        , scientificDecimals :: Maybe Int
                        , uriUserInfo :: String -> String
-                       -- ^ Used to map the userinfo part of the URI.
+                       -- ^ Used to map userinfo parts of URIs.
                        }
 
 -- | Default options.
 defOpt :: Options
-defOpt = Options (map toLower) (("--" ++) . map toLower) False True
+defOpt = Options ' ' (map toLower) (("--" ++) . map toLower) False True
   defaultTimeLocale (iso8601DateFormat Nothing) "%H:%M:%S"
   (iso8601DateFormat (Just "%H:%M:%S")) Generic Nothing id
 
@@ -150,6 +162,14 @@ fromArgs opt args = case parse (argParser opt) "arguments" (map CLArg args) of
 -- | Composes a usage string.
 usage :: Coalpit a => Options -> Proxy a -> String
 usage opt = argHelper opt []
+
+-- | Shows values in DSV format.
+showDSV :: Coalpit a => Options -> [a] -> String
+showDSV opt = composeDSV (fieldSeparator opt) . map (toArgs opt)
+
+-- | Reads values from DSV format.
+readDSV :: Coalpit a => Options -> String -> [Either String a]
+readDSV opt = map (>>= fromArgs opt) . parseDSV (fieldSeparator opt)
 
 
 -- Units

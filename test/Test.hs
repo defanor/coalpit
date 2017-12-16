@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass, RankNTypes #-}
 
 import GHC.Generics
 import Generic.Random
@@ -9,6 +9,7 @@ import Test.Tasty.Travis
 import Data.Word
 import Data.Int
 import Data.Complex
+import Data.Either
 
 import Coalpit
 
@@ -40,7 +41,7 @@ data Nested = Nested Record Basic WithLists Sum
   deriving (Generic, Eq, Show, Coalpit)
 instance Arbitrary Nested where arbitrary = genericArbitraryU
 
-data Polymorphic a b = Polymorphic (Maybe a) [b] (Either a b)
+data Polymorphic a b = Polymorphic (Maybe a) (Either a b)
   deriving (Generic, Eq, Show)
 instance (Coalpit a, Coalpit b) => Coalpit (Polymorphic a b)
 instance (Arbitrary a, Arbitrary b) => Arbitrary (Polymorphic a b) where
@@ -72,7 +73,7 @@ instance Arbitrary RecursiveRecordMaybe where arbitrary = genericArbitraryU
 
 data RecursiveRecordMaybe2 = RecursiveRecordMaybe2
   { record1' :: Maybe Record
-  , rrm' :: Maybe RecursiveRecordMaybe2
+  , rrm' :: Maybe (Maybe RecursiveRecordMaybe2)
   , record2' :: Maybe Record
   , guard' :: ()
   } deriving (Generic, Eq, Show, Coalpit)
@@ -87,46 +88,57 @@ instance Arbitrary RecordStrings where arbitrary = genericArbitraryU
 
 printAndParse :: (Coalpit a, Eq a)
               => Options -> Proxy a -> a -> Bool
-printAndParse m _ r = Right r == fromArgs m (toArgs m r)
+printAndParse opt _ r = Right r == fromArgs opt (toArgs opt r)
 
-mkTest :: (Coalpit a, Eq a, Show a, Arbitrary a)
-       => Options -> Proxy a -> String -> TestTree
-mkTest m p n = QC.testProperty n (printAndParse m p)
+printAndParseDSV :: (Coalpit a, Eq a)
+                 -- It would take a long time to test with [a], so
+                 -- just repeating it 0--2 times.
+                 => Options -> Proxy a -> (a, Int) -> Bool
+printAndParseDSV opt _ (x, n) =
+  let xs = (replicate (n `mod` 3) x)
+  in xs == rights (readDSV opt (showDSV opt xs))
 
-idEqToAndFrom :: Options -> TestTree
-idEqToAndFrom m = testGroup "id == parse . print"
-  [ mkTest m (Proxy :: Proxy Basic) "Basic"
-  , mkTest m (Proxy :: Proxy WithLists) "WithLists"
-  , mkTest m (Proxy :: Proxy Record) "Record"
-  , mkTest m (Proxy :: Proxy Sum) "Sum"
-  , mkTest m (Proxy :: Proxy Nested) "Nested"
-  , mkTest m (Proxy :: Proxy (Polymorphic Int Double))
-    "Polymorphic Int Double"
-  , mkTest m (Proxy :: Proxy (Polymorphic Basic Record))
-    "Polymorphic Basic Record"
-  , mkTest m (Proxy :: Proxy (Polymorphic Nested (Polymorphic Basic Sum)))
+
+variousTypes :: (forall a. (Coalpit a, Eq a, Show a, Arbitrary a) =>
+                  Proxy a -> String -> TestTree)
+             -> [TestTree]
+variousTypes f =
+  [ f (Proxy :: Proxy Basic) "Basic"
+  , f (Proxy :: Proxy WithLists) "WithLists"
+  , f (Proxy :: Proxy Record) "Record"
+  , f (Proxy :: Proxy Sum) "Sum"
+  , f (Proxy :: Proxy Nested) "Nested"
+  , f (Proxy :: Proxy (Polymorphic Int Double)) "Polymorphic Int Double"
+  , f (Proxy :: Proxy (Polymorphic Basic Record)) "Polymorphic Basic Record"
+  , f (Proxy :: Proxy (Polymorphic Nested (Polymorphic Basic Sum)))
     "Polymorphic Nested (Polymorphic Basic Sum)"
-  , mkTest m (Proxy :: Proxy Recursive) "Recursive"
-  , mkTest m (Proxy :: Proxy NestedRecord) "NestedRecord"
-  , mkTest m (Proxy :: Proxy NestedSum) "NestedSum"
-  , mkTest m (Proxy :: Proxy RecursiveRecordMaybe) "RecursiveRecordMaybe"
-  , mkTest m (Proxy :: Proxy RecursiveRecordMaybe2) "RecursiveRecordMaybe2"
-  , mkTest m (Proxy :: Proxy RecordStrings) "RecordStrings"
+  , f (Proxy :: Proxy Recursive) "Recursive"
+  , f (Proxy :: Proxy NestedRecord) "NestedRecord"
+  , f (Proxy :: Proxy NestedSum) "NestedSum"
+  , f (Proxy :: Proxy RecursiveRecordMaybe) "RecursiveRecordMaybe"
+  , f (Proxy :: Proxy RecursiveRecordMaybe2) "RecursiveRecordMaybe2"
+  , f (Proxy :: Proxy RecordStrings) "RecordStrings"
   ]
 
-variousOptions :: (Options -> TestTree) -> TestTree
-variousOptions tt = testGroup "Various modifiers"
+variousOptions :: (Options -> [TestTree]) -> [TestTree]
+variousOptions tt =
   [ testGroup (concat [ "alwaysUseSelName = ", show ausn
                       , ", omitNamedOptions = ", show ono])
-    [tt defOpt { alwaysUseSelName = ausn
-               , omitNamedOptions = ono }]
+    (tt defOpt { alwaysUseSelName = ausn
+               , omitNamedOptions = ono })
   | ausn <- [True, False]
   , ono <- [True, False]
   ]
 
 qcProps :: TestTree
 qcProps = testGroup "Quickcheck properties"
-  [ variousOptions idEqToAndFrom ]
+  [ testGroup "Right == fromARgs opt . toArgs opt"
+    (variousOptions $ \opt ->
+        variousTypes $ \p n -> QC.testProperty n (printAndParse opt p))
+  , testGroup "xs == rights (readDSV opt (showDSV opt xs))"
+    (variousOptions $ \opt ->
+        variousTypes $ \p n -> QC.testProperty n (printAndParseDSV opt p))
+  ]
 
 main :: IO ()
 main = travisTestReporter defaultConfig [] qcProps

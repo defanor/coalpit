@@ -1,12 +1,12 @@
 name:                coalpit
-version:             0.1.0.2
-synopsis:            Command-line options parsing and printing
+version:             0.1.0.3
+synopsis:            Command-line options and DSV parsing and printing
 description:         This library generates parsers and printers for
                      given data types, in the form of command-line
-                     arguments – so that they can be used to quickly
-                     get program interfaces via a shared library,
-                     while being suitable for scripting and as user
-                     interfaces.
+                     arguments or DSVs – so that they can be used to
+                     quickly get program interfaces via a shared
+                     library, while being suitable for scripting and
+                     as user interfaces.
 license:             BSD3
 license-file:        LICENSE
 author:              defanor
@@ -26,6 +26,7 @@ source-repository head
 library
   exposed-modules:     Coalpit
                      , Coalpit.Parsing
+                     , Coalpit.DSV
   build-depends:       base >= 4.9 && < 5
                      , megaparsec >= 6.2 && < 7
                      , scientific >= 0.3 && < 1

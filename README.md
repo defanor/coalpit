@@ -8,8 +8,9 @@ while keeping them language-agnostic and more user- and shell
 scripting-friendly than JSON and similar formats.
 
 Given a type, it derives instances to print and parse it as
-command-line arguments, as well as to compose usage instructions. The
-resulting deserialization wouldn't be as nice as that of
+command-line arguments or DSVs, as well as to compose usage
+instructions. The resulting deserialization wouldn't be as nice as
+that of
 e.g.
 [optparse-generic](https://hackage.haskell.org/package/optparse-generic),
 but the aim here is to handle more or less arbitrary types.
@@ -66,27 +67,27 @@ the (alwaysUseSelName, omitNamedOptions) combinations:
 
 ```
 (True,True)
-["--foo","[]","--bar","a string"]
+--foo : 1 : 2 : 3 [] --bar "a string"
 --foo ([] | : INT ([] | :...)) [--bar STRING]
 (True,True)
-["--foo","[]"]
+--foo : 1 : 2 : 3 []
 --foo ([] | : INT ([] | :...)) [--bar STRING]
 (True,False)
-["--foo","[]","--bar","just","a string"]
+--foo : 1 : 2 : 3 [] --bar just "a string"
 --foo ([] | : INT ([] | :...)) --bar (nothing | just STRING)
 (True,False)
-["--foo","[]","--bar","nothing"]
+--foo : 1 : 2 : 3 [] --bar nothing
 --foo ([] | : INT ([] | :...)) --bar (nothing | just STRING)
 (False,True)
-["[]","--bar","a string"]
+: 1 : 2 : 3 [] --bar "a string"
 ([] | : INT ([] | :...)) [--bar STRING]
 (False,True)
-["[]"]
+: 1 : 2 : 3 []
 ([] | : INT ([] | :...)) [--bar STRING]
 (False,False)
-["[]","just","a string"]
+: 1 : 2 : 3 [] just "a string"
 ([] | : INT ([] | :...)) (nothing | just STRING)
 (False,False)
-["[]","nothing"]
+: 1 : 2 : 3 [] nothing
 ([] | : INT ([] | :...)) (nothing | just STRING)
 ```
