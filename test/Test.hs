@@ -132,7 +132,7 @@ variousOptions tt =
 
 qcProps :: TestTree
 qcProps = testGroup "Quickcheck properties"
-  [ testGroup "Right == fromARgs opt . toArgs opt"
+  [ testGroup "Right == fromArgs opt . toArgs opt"
     (variousOptions $ \opt ->
         variousTypes $ \p n -> QC.testProperty n (printAndParse opt p))
   , testGroup "xs == rights (readDSV opt (showDSV opt xs))"
