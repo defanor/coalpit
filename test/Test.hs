@@ -67,7 +67,7 @@ instance Arbitrary NestedSum where arbitrary = genericArbitraryU
 data RecursiveRecordMaybe = RecursiveRecordMaybe
   { rrm :: Maybe RecursiveRecordMaybe
   , record :: Maybe Record
-  , guard :: ()
+  , guard :: Word8
   } deriving (Generic, Eq, Show, Coalpit)
 instance Arbitrary RecursiveRecordMaybe where arbitrary = genericArbitraryU
 
@@ -75,7 +75,7 @@ data RecursiveRecordMaybe2 = RecursiveRecordMaybe2
   { record1' :: Maybe Record
   , rrm' :: Maybe (Maybe RecursiveRecordMaybe2)
   , record2' :: Maybe Record
-  , guard' :: ()
+  , guard' :: Word8
   } deriving (Generic, Eq, Show, Coalpit)
 instance Arbitrary RecursiveRecordMaybe2 where arbitrary = genericArbitraryU
 
@@ -96,7 +96,7 @@ printAndParseDSV :: (Coalpit a, Eq a)
                  => Options -> Proxy a -> (a, Int) -> Bool
 printAndParseDSV opt _ (x, n) =
   let xs = (replicate (n `mod` 3) x)
-  in xs == rights (readDSV opt (showDSV opt xs))
+  in xs == (rights . map (readDSV opt) . lines . unlines . map (showDSV opt) $ xs)
 
 
 variousTypes :: (forall a. (Coalpit a, Eq a, Show a, Arbitrary a) =>
@@ -135,7 +135,8 @@ qcProps = testGroup "Quickcheck properties"
   [ testGroup "Right == fromArgs opt . toArgs opt"
     (variousOptions $ \opt ->
         variousTypes $ \p n -> QC.testProperty n (printAndParse opt p))
-  , testGroup "id == rights . readDSV opt . showDSV opt"
+  , testGroup
+    "id == rights . map (readDSV opt) . lines . unlines . map (showDSV opt)"
     (variousOptions $ \opt ->
         variousTypes $ \p n -> QC.testProperty n (printAndParseDSV opt p))
   ]

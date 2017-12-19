@@ -31,15 +31,6 @@ composeDSVLine fs = intercalate [fs] . map escapeVal
                      then inner
                      else init $ tail inner
 
--- | Composes DSV out of values.
-composeDSV :: Char
-           -- ^ Field separator.
-           -> [[String]]
-           -- ^ Lines of values.
-           -> String
-composeDSV fs = unlines . map (composeDSVLine fs)
-
-
 pStr :: Char -> Parsec Void String String
 pStr fs = do
   s <- try (between (char '"') (char '"')
@@ -54,23 +45,15 @@ pStr fs = do
 pDSVLine :: Char -> Parsec Void String [String]
 pDSVLine fs = pStr fs `sepBy` char fs
 
--- | Parses values out of DSV.
-parseDSV :: Char
-         -- ^ Field separator
-         -> String
-         -- ^ A string containing lines.
-         -> [Either String [String]]
-parseDSV fs = map parseLine . lines
-  where parseLine :: String -> Either String [String]
-        parseLine l = case parse (pDSVLine fs) "line" l of
-          Left err -> Left $ parseErrorPretty err
-          Right x -> Right x
-
+parseDSVLine :: Char -> String -> Either String [String]
+parseDSVLine fs l = case parse (pDSVLine fs) "line" l of
+  Left err -> Left $ parseErrorPretty err
+  Right x -> Right x
 
 -- | Shows values in DSV format.
-showDSV :: Coalpit a => Options -> [a] -> String
-showDSV opt = composeDSV (fieldSeparator opt) . map (toArgs opt)
+showDSV :: Coalpit a => Options -> a -> String
+showDSV opt = composeDSVLine (fieldSeparator opt) . (toArgs opt)
 
 -- | Reads values from DSV format.
-readDSV :: Coalpit a => Options -> String -> [Either String a]
-readDSV opt = map (>>= fromArgs opt) . parseDSV (fieldSeparator opt)
+readDSV :: Coalpit a => Options -> String -> Either String a
+readDSV opt = (>>= fromArgs opt) . parseDSVLine (fieldSeparator opt)

@@ -17,8 +17,7 @@ but the aim here is to handle more or less arbitrary types.
 
 Warning: it is possible to run into ambiguity by defining a recursive
 structure with optional named elements while using default options.
-Unit type can be used to avoid that, or `omitNamedOptions` can be
-disabled.
+`omitNamedOptions` can be disabled to avoid that.
 
 Not production-ready yet, merely a prototype.
 

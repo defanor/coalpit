@@ -43,12 +43,12 @@ Then, in a shell:
 > Foo {bar = Nothing, baz = "a string"}
 > ["a string"]
 > "a string"
-> [Right (Foo {bar = Nothing, baz = "a string"})]
+> Right (Foo {bar = Nothing, baz = "a string"})
 > $ ./Example --bar 42 'a string'
 > Foo {bar = Just 42, baz = "a string"}
 > ["--bar","42","a string"]
 > --bar 42 "a string"
-> [Right (Foo {bar = Just 42, baz = "a string"})]
+> Right (Foo {bar = Just 42, baz = "a string"})
 > $ ./Example --bar foo
 > arguments:1:3:
 > Failed to read: foo

@@ -366,12 +366,6 @@ instance {-#OVERLAPPING#-} Coalpit String where
   toArgs _ i = [i]
   argHelper _ _ _ = "STRING"
 
--- | A dot (".").
-instance Coalpit () where
-  argParser _ = pS (char '.') *> pure ()
-  toArgs _ () = ["."]
-  argHelper _ _ _ = "."
-
 instance Coalpit Scientific where
   argParser _ = try $ do
     x <- token (Right . unArg) Nothing
@@ -453,6 +447,7 @@ instance Coalpit DiffTime where
   argHelper _ _ _ = "DIFF_TIME"
 
 
+instance Coalpit ()
 instance Coalpit Bool
 instance Coalpit Ordering
 instance Coalpit ExitCode
