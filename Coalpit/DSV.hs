@@ -1,22 +1,24 @@
 {- |
 Module      :  Coalpit.DSV
-Description :  Argument parsing facilities
+Description :  DSV printing and parsing
 Maintainer  :  defanor <defanor@uberspace.net>
 Stability   :  unstable
 Portability :  non-portable (uses GHC extensions)
 
-This module provides functions useful for argument parsing.
+This module provides functions for DSV printing and parsing.
 -}
 
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Coalpit.DSV (composeDSV, parseDSV) where
+module Coalpit.DSV (showDSV, readDSV) where
 
 import Data.List
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import Data.Void
+
+import Coalpit.Core
 
 
 composeDSVLine :: Char -> [String] -> String
@@ -63,3 +65,12 @@ parseDSV fs = map parseLine . lines
         parseLine l = case parse (pDSVLine fs) "line" l of
           Left err -> Left $ parseErrorPretty err
           Right x -> Right x
+
+
+-- | Shows values in DSV format.
+showDSV :: Coalpit a => Options -> [a] -> String
+showDSV opt = composeDSV (fieldSeparator opt) . map (toArgs opt)
+
+-- | Reads values from DSV format.
+readDSV :: Coalpit a => Options -> String -> [Either String a]
+readDSV opt = map (>>= fromArgs opt) . parseDSV (fieldSeparator opt)

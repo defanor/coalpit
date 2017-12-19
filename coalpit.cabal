@@ -25,8 +25,9 @@ source-repository head
 
 library
   exposed-modules:     Coalpit
-                     , Coalpit.Parsing
+                     , Coalpit.Core
                      , Coalpit.DSV
+                     , Coalpit.Parsing
   build-depends:       base >= 4.9 && < 5
                      , megaparsec >= 6.2 && < 7
                      , scientific >= 0.3 && < 1
