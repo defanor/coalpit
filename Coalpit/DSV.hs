@@ -52,7 +52,7 @@ parseDSVLine fs l = case parse (pDSVLine fs) "line" l of
 
 -- | Shows values in DSV format.
 showDSV :: Coalpit a => Options -> a -> String
-showDSV opt = composeDSVLine (fieldSeparator opt) . (toArgs opt)
+showDSV opt = composeDSVLine (fieldSeparator opt) . toArgs opt
 
 -- | Reads values from DSV format.
 readDSV :: Coalpit a => Options -> String -> Either String a
