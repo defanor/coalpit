@@ -23,8 +23,8 @@ Not production-ready yet, merely a prototype.
 
 ## Example
 
-An example is available in `Example.hs`. Given the following Haskell
-value:
+An example is available in `examples/Basic.hs`. Given the following
+Haskell value:
 
 ```haskell
 Input { something = Nothing

@@ -59,9 +59,7 @@ Then, in a shell:
 
 module Coalpit ( module Coalpit.Core
                , module Coalpit.DSV
-               , module Coalpit.IO
                ) where
 
 import Coalpit.Core
 import Coalpit.DSV
-import Coalpit.IO

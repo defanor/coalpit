@@ -1,35 +1,7 @@
-{- |
-Module      :  Coalpit.IO
-Description :  Helper IO functions
-Maintainer  :  defanor <defanor@uberspace.net>
-Stability   :  unstable
-Portability :  non-portable (uses GHC extensions)
+{-# LANGUAGE RankNTypes, ScopedTypeVariables, DeriveGeneric,
+  DeriveAnyClass #-}
 
-These are basic utility functions for pipes-based IO.
-
-An example:
-
-@
-\{\-\# LANGUAGE DeriveGeneric, DeriveAnyClass \#\-\}
-import GHC.Generics
-import Pipes.Prelude as PP
-import Coalpit
-
-data Args = Args { arg1 :: Maybe Int, arg2 :: Double }
-  deriving (Generic, Coalpit)
-data Input = Input Double deriving (Generic, Coalpit)
-data Output = Foo Double | Bar deriving (Generic, Coalpit)
-
-main :: IO ()
-main = run' $ \a -> PP.mapM $ \(Input i) ->
-  pure $ Foo $ maybe (arg2 a) fromIntegral (arg1 a) + i
-@
-
--}
-
-{-# LANGUAGE RankNTypes, ScopedTypeVariables #-}
-
-module Coalpit.IO (run, run', handleErrors) where
+module Coalpit.IO (runMain, runMain', handleErrors) where
 
 import Data.Proxy (Proxy(..))
 import System.Environment (getProgName, getArgs)
@@ -41,6 +13,7 @@ import Control.Monad (mapM_, forever)
 import qualified Pipes.Prelude as PP
 import Coalpit.Core (Coalpit, fromArgs, defOpt, usage)
 import Coalpit.DSV (readDSV, showDSV)
+import GHC.Generics
 
 -- | Runs a given action on each 'Left' value, embedding that action's
 -- result into the data stream.
@@ -56,13 +29,13 @@ handleErrors e = forever $ do
 -- | Runs a given 'Pipe' between input producer and output consumer.
 -- Prints an error and usage instructions if it fails to parse the
 -- arguments, and passes the input through 'handleErrors'.
-run :: forall m a i o. (MonadIO m, Coalpit a, Coalpit i, Coalpit o)
-    => (String -> m [i])
-    -- ^ An action to run on error (see 'handleErrors').
-    -> (a -> Pipe i o m ())
-    -- ^ Main function.
-    -> m ()
-run e f = do
+runMain :: forall m a i o. (MonadIO m, Coalpit a, Coalpit i, Coalpit o)
+        => (String -> m [i])
+        -- ^ An action to run on error (see 'handleErrors').
+        -> (a -> Pipe i o m ())
+        -- ^ Main function.
+        -> m ()
+runMain e f = do
   pn <- liftIO getProgName
   let u = Prelude.concat ["Usage: ", pn, " ", usage defOpt (Proxy :: Proxy a)]
   args <- liftIO getArgs
@@ -75,9 +48,19 @@ run e f = do
     >-> PP.map (showDSV defOpt)
     >-> PP.stdoutLn
 
--- | Same as 'run', but just prints errors into 'stderr'.
-run' :: forall m a i o. (MonadIO m, Coalpit a, Coalpit i, Coalpit o)
+-- | Same as 'runMain', but just prints errors into 'stderr'.
+runMain' :: forall m a i o. (MonadIO m, Coalpit a, Coalpit i, Coalpit o)
          => (a -> Pipe i o m ())
          -- ^ Main function.
          -> m ()
-run' = run (\e -> liftIO $ hPutStrLn stderr e >> pure [])
+runMain' = runMain (\e -> liftIO $ hPutStrLn stderr e >> pure [])
+
+
+data Args = Args { arg1 :: Maybe Int, arg2 :: Double }
+  deriving (Generic, Coalpit)
+data Input = Input Double deriving (Generic, Coalpit)
+data Output = Foo Double | Bar deriving (Generic, Coalpit)
+
+main :: IO ()
+main = runMain' $ \a -> PP.mapM $ \(Input i) ->
+  pure $ Foo $ maybe (arg2 a) fromIntegral (arg1 a) + i
