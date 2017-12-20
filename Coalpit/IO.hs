@@ -12,22 +12,24 @@ An example:
 @
 \{\-\# LANGUAGE DeriveGeneric, DeriveAnyClass \#\-\}
 import GHC.Generics
-import "Coalpit"
+import Pipes.Prelude as PP
+import Coalpit
 
-data Output = Foo Double | Bar deriving (Generic, 'Coalpit')
 data Args = Args { arg1 :: Maybe Int, arg2 :: Double }
-  deriving (Generic, 'Coalpit')
+  deriving (Generic, Coalpit)
+data Input = Input Double deriving (Generic, Coalpit)
+data Output = Foo Double | Bar deriving (Generic, Coalpit)
 
 main :: IO ()
-main = 'pipe' $ \a i -> pure $ Foo $ maybe (arg2 a) fromIntegral (arg1 a) + i
+main = run' $ \a -> PP.mapM $ \(Input i) ->
+  pure $ Foo $ maybe (arg2 a) fromIntegral (arg1 a) + i
 @
 
 -}
 
 {-# LANGUAGE RankNTypes, ScopedTypeVariables #-}
 
-module Coalpit.IO ( run, run', handleErrors
-                  , pipe, consumer, producer) where
+module Coalpit.IO (run, run', handleErrors) where
 
 import Data.Proxy (Proxy(..))
 import System.Environment (getProgName, getArgs)
@@ -79,18 +81,3 @@ run' :: forall m a i o. (MonadIO m, Coalpit a, Coalpit i, Coalpit o)
          -- ^ Main function.
          -> m ()
 run' = run (\e -> liftIO $ hPutStrLn stderr e >> pure [])
-
--- | Similar to 'interact' in the approach, a wrapper around 'run''.
-pipe :: (MonadIO m, Coalpit a, Coalpit i, Coalpit o)
-     => (a -> i -> m o) -> m ()
-pipe f = run' $ \a -> forever $ await >>= lift . f a >>= yield
-
--- | A version of 'pipe' that doesn't 'await' any input.
-producer :: forall m a o. (MonadIO m, Coalpit a, Coalpit o)
-         => (a -> m o) -> m ()
-producer f = run' $ \a -> forever $ lift (f a) >>= yield :: Pipe () o m ()
-
--- | A version of 'pipe' that doesn't 'yield' any output.
-consumer :: forall m a i. (MonadIO m, Coalpit a, Coalpit i)
-         => (a -> i -> m ()) -> m ()
-consumer f = run' $ \a -> forever $ await >>= lift . f a :: Pipe i () m ()
