@@ -33,8 +33,8 @@ main = do
     Right x -> do
       print (x :: Foo)
       print $ 'toArgs' 'defOpt' x
-      putStr $ 'showDSV' 'defOpt' [x]
-      print ('readDSV' 'defOpt' $ 'showDSV' 'defOpt' [x] :: [Either String Foo])
+      putStrLn $ showDSV defOpt x
+      print ('readDSV' 'defOpt' $ 'showDSV' 'defOpt' x :: Either String Foo)
 @
 
 Then, in a shell:
