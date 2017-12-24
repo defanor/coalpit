@@ -50,14 +50,26 @@ import Network.URI (URI, parseURIReference, uriToString)
 
 import Coalpit.Parsing
 
+-- | Usage description: can be translated into help messages or
+-- documentation formats.
 data Usage = UConstructor String
+           -- ^ Data constructor.
            | URecursive String
+           -- ^ Constructor of a recursive data structure (its second
+           -- appearance in the tree).
            | USelector String Usage
+           -- ^ Record selector.
            | UOptional Usage
+           -- ^ Optional element.
            | USum Usage Usage
+           -- ^ Sum.
            | UProduct Usage Usage
+           -- ^ Product.
            | UUnit
+           -- ^ Unit.
            | UType String
+           -- ^ Type name, e.g. \"INT\".
+           deriving (Show)
 
 -- | Printing and parsing options.
 data Options = Options { fieldSeparator :: Char
