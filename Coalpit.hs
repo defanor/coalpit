@@ -29,7 +29,7 @@ main = do
   case 'fromArgs' 'defOpt' args of
     Left err -> do
       putStrLn err
-      putStrLn $ "Usage: " ++ 'usage' 'defOpt' (Proxy :: Proxy Foo)
+      putStrLn $ "Usage: " ++ 'usageString' 'defOpt' (Proxy :: Proxy Foo)
     Right x -> do
       print (x :: Foo)
       print $ 'toArgs' 'defOpt' x

@@ -37,7 +37,8 @@ runMain :: forall m a i o. (MonadIO m, Coalpit a, Coalpit i, Coalpit o)
         -> m ()
 runMain e f = do
   pn <- liftIO getProgName
-  let u = Prelude.concat ["Usage: ", pn, " ", usage defOpt (Proxy :: Proxy a)]
+  let u = Prelude.concat [ "Usage: ", pn, " "
+                         , usageString defOpt (Proxy :: Proxy a)]
   args <- liftIO getArgs
   a <- either (liftIO . die . (++ u)) pure $ fromArgs defOpt args
   runEffect $

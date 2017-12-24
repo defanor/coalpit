@@ -17,9 +17,11 @@ and 'Options' are defined here.
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Coalpit.Core ( Coalpit(..)
-                    -- * Utility functions
                     , fromArgs
+                    -- * Usage
+                    , Usage(..)
                     , usage
+                    , usageString
                     -- * Options
                     , Options(..)
                     , defOpt
@@ -47,6 +49,15 @@ import System.Exit (ExitCode)
 import Network.URI (URI, parseURIReference, uriToString)
 
 import Coalpit.Parsing
+
+data Usage = UConstructor String
+           | URecursive String
+           | USelector String Usage
+           | UOptional Usage
+           | USum Usage Usage
+           | UProduct Usage Usage
+           | UUnit
+           | UType String
 
 -- | Printing and parsing options.
 data Options = Options { fieldSeparator :: Char
@@ -85,9 +96,30 @@ fromArgs opt args = case parse (argParser opt) "arguments" (map CLArg args) of
   Left err -> Left $ parseErrorPretty err
   Right x -> Right x
 
--- | Composes a usage string.
-usage :: Coalpit a => Options -> Proxy a -> String
+-- | Composes 'Usage' description.
+usage :: Coalpit a => Options -> Proxy a -> Usage
 usage opt = argHelper opt []
+
+-- | Composes a usage string.
+usageString :: Coalpit a => Options -> Proxy a -> String
+usageString opt = usageToString . usage opt
+
+-- | Translates 'Usage' into a string, used by 'usageString'.
+usageToString :: Usage -> String
+usageToString (UConstructor c) = c
+usageToString (URecursive c) = c ++ "..."
+usageToString (USelector s u) = s ++ " " ++ usageToString u
+usageToString (UOptional u) = "[" ++ usageToString u ++ "]"
+usageToString (USum ul ur) = concat [ "("
+                                    , usageToString ul
+                                    , " | "
+                                    , usageToString ur
+                                    , ")"]
+usageToString (UProduct u1 UUnit) = usageToString u1
+usageToString (UProduct u1 u2) = usageToString u1 ++ " " ++ usageToString u2
+usageToString UUnit = ""
+usageToString (UType t) = t
+
 
 -- | Coalpit class: parsing, printing, usage strings.
 class Coalpit a where
@@ -99,22 +131,22 @@ class Coalpit a where
   default toArgs :: (Generic a, GCoalpit (Rep a)) => Options -> a -> [String]
   toArgs opt a = gToArgs opt (from a)
 
-  argHelper :: Options -> [String] -> Proxy a -> String
+  argHelper :: Options -> [String] -> Proxy a -> Usage
   default argHelper :: (GCoalpit (Rep a))
-                    => Options -> [String] -> Proxy a -> String
+                    => Options -> [String] -> Proxy a -> Usage
   argHelper opt path Proxy = gArgHelper opt path (Proxy :: Proxy (Rep a p))
 
 class GCoalpit a where
   gArgParser :: Options -> Parser (a p)
   gToArgs :: Options -> a p -> [String]
-  gArgHelper :: Options -> [String] -> Proxy (a p) -> String
+  gArgHelper :: Options -> [String] -> Proxy (a p) -> Usage
 
 
 -- Units
 instance GCoalpit U1 where
   gArgParser _ = pure U1
   gToArgs _ U1 = []
-  gArgHelper _ _ (Proxy :: Proxy (U1 f)) = ""
+  gArgHelper _ _ (Proxy :: Proxy (U1 f)) = UUnit
 
 
 -- Products
@@ -122,9 +154,8 @@ instance (GCoalpit a, GCoalpit b) => GCoalpit (a :*: b) where
   gArgParser opt = (:*:) <$> gArgParser opt <*> gArgParser opt
   gToArgs opt (x :*: y) = gToArgs opt x ++ gToArgs opt y
   gArgHelper opt path (Proxy :: Proxy ((a :*: b) p)) =
-    concat [ gArgHelper opt path (Proxy :: Proxy (a p))
-           , " "
-           , gArgHelper opt path (Proxy :: Proxy (b p))]
+    UProduct (gArgHelper opt path (Proxy :: Proxy (a p)))
+    (gArgHelper opt path (Proxy :: Proxy (b p)))
 
 
 -- Sums
@@ -136,13 +167,13 @@ handleRecCon :: GCoalpit a
              -> Options
              -> [String]
              -> Proxy (a p)
-             -> String
-handleRecCon nameA opt path (Proxy :: Proxy (a p)) = conNameMod opt nameA
-  ++ if nameA `elem` path
-     then "..."
-     else case gArgHelper opt (nameA : path) (Proxy :: Proxy (a p)) of
-            "" -> ""
-            s -> ' ' : s
+             -> Usage
+handleRecCon nameA opt path (Proxy :: Proxy (a p)) =
+  let n = conNameMod opt nameA
+  in if nameA `elem` path
+     then URecursive n
+     else UProduct (UConstructor n)
+          (gArgHelper opt (nameA : path) (Proxy :: Proxy (a p)))
 
 instance (Constructor conA, GCoalpit a, GCoalpit (b :+: c)) =>
   GCoalpit ((b :+: c) :+: C1 conA a) where
@@ -155,11 +186,8 @@ instance (Constructor conA, GCoalpit a, GCoalpit (b :+: c)) =>
   gToArgs opt (R1 x) = conNameMod opt (conName x) : gToArgs opt x
   gArgHelper opt path (Proxy :: Proxy (((b :+: c) :+: C1 conA a) p)) =
     let nameA = conName (undefined :: C1 conA f p)
-    in concat [ "("
-              , gArgHelper opt path (Proxy :: Proxy ((b :+: c) p))
-              , " | "
-              , handleRecCon nameA opt path (Proxy :: Proxy (a p))
-              , ")"]
+    in USum (gArgHelper opt path (Proxy :: Proxy ((b :+: c) p)))
+       (handleRecCon nameA opt path (Proxy :: Proxy (a p)))
 
 instance (Constructor conA, GCoalpit a, GCoalpit (b :+: c)) =>
   GCoalpit (C1 conA a :+: (b :+: c)) where
@@ -172,11 +200,8 @@ instance (Constructor conA, GCoalpit a, GCoalpit (b :+: c)) =>
   gToArgs opt (R1 x) = gToArgs opt x
   gArgHelper opt path (Proxy :: Proxy ((C1 conA a :+: (b :+: c)) p)) =
     let nameA = conName (undefined :: C1 conA a p)
-    in concat [ "("
-              , handleRecCon nameA opt path (Proxy :: Proxy (a p))
-              , " | "
-              , gArgHelper opt path (Proxy :: Proxy ((b :+: c) p))
-              , ")"]
+    in USum (handleRecCon nameA opt path (Proxy :: Proxy (a p)))
+       (gArgHelper opt path (Proxy :: Proxy ((b :+: c) p)))
 
 instance (Constructor conA, Constructor conB, GCoalpit a, GCoalpit b) =>
   GCoalpit (C1 conA a :+: C1 conB b) where
@@ -193,11 +218,8 @@ instance (Constructor conA, Constructor conB, GCoalpit a, GCoalpit b) =>
   gArgHelper opt path (Proxy :: Proxy ((C1 conA a :+: C1 conB b) p)) =
     let nameA = conName (undefined :: C1 conA a p)
         nameB = conName (undefined :: C1 conB b p)
-    in concat [ "("
-              , handleRecCon nameA opt path (Proxy :: Proxy (a p))
-              , " | "
-              , handleRecCon nameB opt path (Proxy :: Proxy (b p))
-              , ")"]
+    in USum (handleRecCon nameA opt path (Proxy :: Proxy (a p)))
+       (handleRecCon nameB opt path (Proxy :: Proxy (b p)))
 
 
 -- Record Selectors
@@ -217,14 +239,13 @@ printS1 opt sel@(M1 x) = case (selName sel, alwaysUseSelName opt) of
                            (name, True) -> selNameMod opt name : gToArgs opt x
 
 helpS1 :: (GCoalpit a)
-       => String -> Options -> [String] -> Proxy (S1 selA a p) -> String
+       => String -> Options -> [String] -> Proxy (S1 selA a p) -> Usage
 helpS1 nameA opt path (Proxy :: Proxy (S1 selA a p)) =
   case (nameA, alwaysUseSelName opt) of
     ("", _) -> gArgHelper opt path (Proxy :: Proxy (a p))
     (_, False) -> gArgHelper opt path (Proxy :: Proxy (a p))
-    (_, True) -> concat [ selNameMod opt nameA
-                        , " "
-                        , gArgHelper opt path (Proxy :: Proxy (a p))]
+    (_, True) -> USelector (selNameMod opt nameA)
+      (gArgHelper opt path (Proxy :: Proxy (a p)))
 
 instance (GCoalpit a, Selector selA) => GCoalpit (S1 selA a) where
   gArgParser = parseS1 (selName (undefined :: S1 selA a p))
@@ -253,11 +274,8 @@ instance {-#OVERLAPPING#-}
     let nameA = selName (undefined :: S1 selA (Rec0 (Maybe a)) p)
     in case (omitNamedOptions opt, null nameA) of
       (True, True) -> gArgHelper opt path (Proxy :: Proxy (Rec0 (Maybe a) p))
-      (True, False) -> concat [ "["
-                              , selNameMod opt nameA
-                              , " "
-                              , gArgHelper opt path (Proxy :: Proxy (Rec0 a p))
-                              , "]"]
+      (True, False) -> UOptional $ USelector (selNameMod opt nameA)
+                       (gArgHelper opt path (Proxy :: Proxy (Rec0 a p)))
       _ -> helpS1 nameA opt path (Proxy :: Proxy (S1 selA (Rec0 (Maybe a)) p))
 
 
@@ -289,82 +307,82 @@ instance (Coalpit a) => GCoalpit (K1 i a) where
 instance Coalpit Int where
   argParser _ = readArg
   toArgs _ i = [show i]
-  argHelper _ _ _ = "INT"
+  argHelper _ _ _ = UType "INT"
 
 instance Coalpit Integer where
   argParser _ = readArg
   toArgs _ i = [show i]
-  argHelper _ _ _ = "INTEGER"
+  argHelper _ _ _ = UType "INTEGER"
 
 instance Coalpit Word8 where
   argParser _ = readArg
   toArgs _ i = [show i]
-  argHelper _ _ _ = "WORD8"
+  argHelper _ _ _ = UType "WORD8"
 
 instance Coalpit Word16 where
   argParser _ = readArg
   toArgs _ i = [show i]
-  argHelper _ _ _ = "WORD16"
+  argHelper _ _ _ = UType "WORD16"
 
 instance Coalpit Word32 where
   argParser _ = readArg
   toArgs _ i = [show i]
-  argHelper _ _ _ = "WORD32"
+  argHelper _ _ _ = UType "WORD32"
 
 instance Coalpit Word64 where
   argParser _ = readArg
   toArgs _ i = [show i]
-  argHelper _ _ _ = "WORD64"
+  argHelper _ _ _ = UType "WORD64"
 
 instance Coalpit Int8 where
   argParser _ = readArg
   toArgs _ i = [show i]
-  argHelper _ _ _ = "INT8"
+  argHelper _ _ _ = UType "INT8"
 
 instance Coalpit Int16 where
   argParser _ = readArg
   toArgs _ i = [show i]
-  argHelper _ _ _ = "INT16"
+  argHelper _ _ _ = UType "INT16"
 
 instance Coalpit Int32 where
   argParser _ = readArg
   toArgs _ i = [show i]
-  argHelper _ _ _ = "INT32"
+  argHelper _ _ _ = UType "INT32"
 
 instance Coalpit Int64 where
   argParser _ = readArg
   toArgs _ i = [show i]
-  argHelper _ _ _ = "INT64"
+  argHelper _ _ _ = UType "INT64"
 
 instance Coalpit Natural where
   argParser _ = readArg
   toArgs _ i = [show i]
-  argHelper _ _ _ = "NATURAL"
+  argHelper _ _ _ = UType "NATURAL"
 
 instance Coalpit Rational where
   argParser _ = readArg
   toArgs _ i = [show i]
-  argHelper _ _ _ = "RATIONAL"
+  argHelper _ _ _ = UType "RATIONAL"
 
 instance Coalpit Double where
   argParser _ = readArg
   toArgs _ i = [show i]
-  argHelper _ _ _ = "DOUBLE"
+  argHelper _ _ _ = UType "DOUBLE"
 
 instance Coalpit Float where
   argParser _ = readArg
   toArgs _ i = [show i]
-  argHelper _ _ _ = "FLOAT"
+  argHelper _ _ _ = UType "FLOAT"
 
 instance Coalpit Char where
   argParser _ = readArg
   toArgs _ c = [show c]
-  argHelper _ _ _ = "CHAR"
+  argHelper _ _ _ = UType "CHAR"
 
 instance {-#OVERLAPPING#-} Coalpit String where
   argParser _ = token (Right . unArg) Nothing
   toArgs _ i = [i]
-  argHelper _ _ _ = "STRING"
+  argHelper _ _ _ = UType "STRING"
 
 instance Coalpit Scientific where
   argParser _ = try $ do
@@ -374,7 +392,7 @@ instance Coalpit Scientific where
       _ -> fail $ "Failed to read a scientific number: " ++ x
   toArgs opt n = [formatScientific
                   (scientificFormat opt) (scientificDecimals opt) n]
-  argHelper _ _ _ = "SCIENTIFIC"
+  argHelper _ _ _ = UType "SCIENTIFIC"
 
 instance Coalpit Version where
   argParser _ = try $ do
@@ -383,7 +401,7 @@ instance Coalpit Version where
       (v, ""):_ -> pure v
       _ -> fail $ "Failed to read a version: " ++ x
   toArgs _ v = [showVersion v]
-  argHelper _ _ _ = "VERSION"
+  argHelper _ _ _ = UType "VERSION"
 
 -- | An URI reference (absolute or relative).
 instance Coalpit URI where
@@ -391,44 +409,44 @@ instance Coalpit URI where
     x <- token (Right . unArg) Nothing
     maybe (fail $ "Failed to parse URI: " ++ x) pure (parseURIReference x)
   toArgs opt u = [uriToString (uriUserInfo opt) u ""]
-  argHelper _ _ _ = "URI"
+  argHelper _ _ _ = UType "URI"
 
 
 -- | Uses 'dateTimeFormat'.
 instance Coalpit UTCTime where
   argParser opt = pTime (timeLocale opt) (dateTimeFormat opt)
   toArgs opt t = [formatTime (timeLocale opt) (dateTimeFormat opt) t]
-  argHelper _ _ _ = "UTC_TIME"
+  argHelper _ _ _ = UType "UTC_TIME"
 
 -- | Uses 'dateTimeFormat'.
 instance Coalpit ZonedTime where
   argParser opt = pTime (timeLocale opt) (dateTimeFormat opt)
   toArgs opt t = [formatTime (timeLocale opt) (dateTimeFormat opt) t]
-  argHelper _ _ _ = "ZONED_TIME"
+  argHelper _ _ _ = UType "ZONED_TIME"
 
 -- | Uses 'dateTimeFormat'.
 instance Coalpit LocalTime where
   argParser opt = pTime (timeLocale opt) (dateTimeFormat opt)
   toArgs opt t = [formatTime (timeLocale opt) (dateTimeFormat opt) t]
-  argHelper _ _ _ = "LOCAL_TIME"
+  argHelper _ _ _ = UType "LOCAL_TIME"
 
 -- | Uses 'dateTimeFormat'.
 instance Coalpit UniversalTime where
   argParser opt = pTime (timeLocale opt) (dateTimeFormat opt)
   toArgs opt t = [formatTime (timeLocale opt) (dateTimeFormat opt) t]
-  argHelper _ _ _ = "UNIVERSAL_TIME"
+  argHelper _ _ _ = UType "UNIVERSAL_TIME"
 
 -- | Uses 'timeFormat'.
 instance Coalpit TimeOfDay where
   argParser opt = pTime (timeLocale opt) (timeFormat opt)
   toArgs opt t = [formatTime (timeLocale opt) (timeFormat opt) t]
-  argHelper _ _ _ = "TIME_OF_DAY"
+  argHelper _ _ _ = UType "TIME_OF_DAY"
 
 -- | Uses 'dateFormat'.
 instance Coalpit Day where
   argParser opt = pTime (timeLocale opt) (dateFormat opt)
   toArgs opt t = [formatTime (timeLocale opt) (dateFormat opt) t]
-  argHelper _ _ _ = "DAY"
+  argHelper _ _ _ = UType "DAY"
 
 -- | Converts to/from 'Scientific'.
 instance Coalpit NominalDiffTime where
@@ -436,7 +454,7 @@ instance Coalpit NominalDiffTime where
                   <$> (argParser opt :: Parser Scientific)
   toArgs opt = toArgs opt .
     (fromRational . toRational :: NominalDiffTime -> Scientific)
-  argHelper _ _ _ = "NOMINAL_DIFF_TIME"
+  argHelper _ _ _ = UType "NOMINAL_DIFF_TIME"
 
 -- | Converts to/from 'Scientific'.
 instance Coalpit DiffTime where
@@ -444,7 +462,7 @@ instance Coalpit DiffTime where
                   <$> (argParser opt :: Parser Scientific)
   toArgs opt = toArgs opt .
     (fromRational . toRational :: DiffTime -> Scientific)
-  argHelper _ _ _ = "DIFF_TIME"
+  argHelper _ _ _ = UType "DIFF_TIME"
 
 
 instance Coalpit ()

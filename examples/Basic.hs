@@ -38,8 +38,8 @@ help = do
     [ let opts = defOpt { alwaysUseSelName = ausn
                         , omitNamedOptions = ono }
       in ( (ausn, ono)
-         , showDSV opts [Test [1,2,3] vals]
-         , argHelper opts [] (Proxy :: Proxy Test))
+         , showDSV opts (Test [1,2,3] vals)
+         , usageString opts (Proxy :: Proxy Test))
       | ausn <- [True, False]
       , ono <- [True, False]
       , vals <- [Just "a string", Nothing]]
