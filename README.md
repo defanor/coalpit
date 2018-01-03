@@ -19,7 +19,6 @@ Warning: it is possible to run into ambiguity by defining a recursive
 structure with optional named elements while using default options.
 `omitNamedOptions` can be disabled to avoid that.
 
-Not production-ready yet, merely a prototype.
 
 ## Example
 

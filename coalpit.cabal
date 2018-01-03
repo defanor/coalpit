@@ -1,5 +1,5 @@
 name:                coalpit
-version:             0.1.0.3
+version:             0.1.1.0
 synopsis:            Command-line options and DSV parsing and printing
 description:         This library generates parsers and printers for
                      given data types, in the form of command-line
