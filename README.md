@@ -1,11 +1,9 @@
 # Coalpit
 
-Coalpit is a library for
-building
-[command-line program interfaces](https://defanor.uberspace.net/notes/command-line-program-interface.html):
-the goal is to get interfaces between programs quickly and easily,
-while keeping them language-agnostic and more user- and shell
-scripting-friendly than JSON and similar formats.
+Coalpit is a library for building command-line interfaces: the goal is
+to get interfaces quickly and easily, while keeping them
+language-agnostic and more user- and shell scripting-friendly than
+JSON and similar formats.
 
 Given a type, it derives instances to print and parse it as
 command-line arguments or DSVs, as well as to compose usage

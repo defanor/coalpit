@@ -4,9 +4,9 @@ synopsis:            Command-line options and DSV parsing and printing
 description:         This library generates parsers and printers for
                      given data types, in the form of command-line
                      arguments or DSVs – so that they can be used to
-                     quickly get program interfaces via a shared
-                     library, while being suitable for scripting and
-                     as user interfaces.
+                     quickly get CLIs via a shared library, while
+                     being suitable for scripting and as user
+                     interfaces.
 license:             BSD3
 license-file:        LICENSE
 author:              defanor
