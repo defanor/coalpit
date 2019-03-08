@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveGeneric, DeriveAnyClass, RankNTypes #-}
 
 import GHC.Generics
-import Generic.Random
+import Generic.Random (genericArbitraryU)
 import Test.Tasty
 import Test.Tasty.QuickCheck as QC
 import Data.Proxy
