@@ -233,6 +233,19 @@ instance (Constructor conA, Constructor conB, GCoalpit a, GCoalpit b) =>
     in USum (handleRecCon nameA opt path (Proxy :: Proxy (a p)))
        (handleRecCon nameB opt path (Proxy :: Proxy (b p)))
 
+instance {-# OVERLAPPABLE #-}
+  (GCoalpit a, GCoalpit b) => GCoalpit (a :+: b) where
+  gArgParser opt =
+    L1 <$> gArgParser opt
+    <|>
+    R1 <$> gArgParser opt
+  gToArgs opt (L1 x) = gToArgs opt x
+  gToArgs opt (R1 x) = gToArgs opt x
+  gArgHelper opt path (Proxy :: Proxy ((a :+: b) p)) =
+    -- let nameA = conName (undefined :: a p)
+    -- in
+      USum (gArgHelper opt path (Proxy :: Proxy (a p)))
+       (gArgHelper opt path (Proxy :: Proxy (b p)))
 
 -- Record Selectors
 
