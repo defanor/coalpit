@@ -13,10 +13,6 @@ e.g.
 [optparse-generic](https://hackage.haskell.org/package/optparse-generic),
 but the aim here is to handle more or less arbitrary types.
 
-Warning: it is possible to run into ambiguity by defining a recursive
-structure with optional named elements while using default options.
-`omitNamedOptions` can be disabled to avoid that.
-
 
 ## Example
 
@@ -30,60 +26,45 @@ Input { something = Nothing
       , fooBar2 = Bar}
 ```
 
-With the default options, its serialized version should look like
-this:
+Its serialized version with the default options is:
 
 ```haskell
-["--foobar","foo","1","a string","bar"]
+input nothing just foo fooargs 1 "a string" bar
 ```
 
-What would look like this in a shell:
-
-```sh
---foobar foo 1 'a string' bar
-```
-
-And its usage string -- like this:
+And its usage string:
 
 ```
-[--something STRING] [--foobar (foo INT STRING | bar)] (foo INT STRING | bar)
+input [--something] (nothing | just STRING) [--foobar] (nothing | just (foo fooargs [--arg1] INT [--arg2] STRING | bar)) [--foobar2] (foo fooargs [--arg1] INT [--arg2] STRING | bar)
 ```
 
-More verbose versions can be produced and parsed with
-`alwaysUseSelName = True` and/or `omitNamedOptions = False`:
-
-```sh
---foobar foo --arg1 1 --arg2 'a string' --foobar2 bar
-nothing just foo 1 'a string' bar
---something nothing --foobar just foo --arg1 1 --arg2 'a string' --foobar2 bar
-```
-
-And here is output of the `help` function from the same file, with all
-the (alwaysUseSelName, omitNamedOptions) combinations:
+Other versions can be produced by varying selector name policy. Below
+are triples of a policy, a corresponding example serialization, and an
+example usage string (output of the `help` function from the example):
 
 ```
-(True,True)
---foo : 1 : 2 : 3 [] --bar "a string"
---foo ([] | : INT ([] | :...)) [--bar STRING]
-(True,True)
---foo : 1 : 2 : 3 []
---foo ([] | : INT ([] | :...)) [--bar STRING]
-(True,False)
---foo : 1 : 2 : 3 [] --bar just "a string"
---foo ([] | : INT ([] | :...)) --bar (nothing | just STRING)
-(True,False)
---foo : 1 : 2 : 3 [] --bar nothing
---foo ([] | : INT ([] | :...)) --bar (nothing | just STRING)
-(False,True)
-: 1 : 2 : 3 [] --bar "a string"
-([] | : INT ([] | :...)) [--bar STRING]
-(False,True)
-: 1 : 2 : 3 []
-([] | : INT ([] | :...)) [--bar STRING]
-(False,False)
-: 1 : 2 : 3 [] just "a string"
-([] | : INT ([] | :...)) (nothing | just STRING)
-(False,False)
-: 1 : 2 : 3 [] nothing
-([] | : INT ([] | :...)) (nothing | just STRING)
+SNDisable
+test : 1 : 2 : 3 [] just "a string"
+test ([] | : INT ([] | :...)) (nothing | just STRING)
+SNDisable
+test : 1 : 2 : 3 [] nothing
+test ([] | : INT ([] | :...)) (nothing | just STRING)
+SNAvoid
+test : 1 : 2 : 3 [] just "a string"
+test [--foo] ([] | : INT ([] | :...)) [--bar] (nothing | just STRING)
+SNAvoid
+test : 1 : 2 : 3 [] nothing
+test [--foo] ([] | : INT ([] | :...)) [--bar] (nothing | just STRING)
+SNPrefer
+test --foo : 1 : 2 : 3 [] --bar just "a string"
+test [--foo] ([] | : INT ([] | :...)) [--bar] (nothing | just STRING)
+SNPrefer
+test --foo : 1 : 2 : 3 [] --bar nothing
+test [--foo] ([] | : INT ([] | :...)) [--bar] (nothing | just STRING)
+SNRequire
+test --foo : 1 : 2 : 3 [] --bar just "a string"
+test --foo ([] | : INT ([] | :...)) --bar (nothing | just STRING)
+SNRequire
+test --foo : 1 : 2 : 3 [] --bar nothing
+test --foo ([] | : INT ([] | :...)) --bar (nothing | just STRING)
 ```

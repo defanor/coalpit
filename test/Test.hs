@@ -5,11 +5,9 @@ import Generic.Random (genericArbitraryU)
 import Test.Tasty
 import Test.Tasty.QuickCheck as QC
 import Data.Proxy
-import Test.Tasty.Travis
 import Data.Word
 import Data.Int
 import Data.Complex
-import Data.Either
 
 import Coalpit
 
@@ -88,16 +86,11 @@ instance Arbitrary RecordStrings where arbitrary = genericArbitraryU
 
 printAndParse :: (Coalpit a, Eq a)
               => Options -> Proxy a -> a -> Bool
-printAndParse opt _ r = Right r == fromArgs opt (toArgs opt r)
+printAndParse opt _ r = Right r == fromDSV opt (toDSV opt r)
 
-printAndParseDSV :: (Coalpit a, Eq a)
-                 -- It would take a long time to test with [a], so
-                 -- just repeating it 0--2 times.
-                 => Options -> Proxy a -> (a, Int) -> Bool
-printAndParseDSV opt _ (x, n) =
-  let xs = (replicate (n `mod` 3) x)
-  in xs == (rights . map (readDSV opt) . lines . unlines . map (showDSV opt) $ xs)
-
+printAndParseList :: (Coalpit a, Eq a)
+                  => Options -> Proxy a -> [a] -> Bool
+printAndParseList opt _ l = Right l == fromDSVList opt (toDSVList opt l)
 
 variousTypes :: (forall a. (Coalpit a, Eq a, Show a, Arbitrary a) =>
                   Proxy a -> String -> TestTree)
@@ -122,24 +115,20 @@ variousTypes f =
 
 variousOptions :: (Options -> [TestTree]) -> [TestTree]
 variousOptions tt =
-  [ testGroup (concat [ "alwaysUseSelName = ", show ausn
-                      , ", omitNamedOptions = ", show ono])
-    (tt defOpt { alwaysUseSelName = ausn
-               , omitNamedOptions = ono })
-  | ausn <- [True, False]
-  , ono <- [True, False]
+  [ testGroup (concat [ "selNamePolicy = ", show snpol ])
+    (tt defOpt { selNamePolicy = snpol })
+  | snpol <- [SNDisable, SNAvoid, SNPrefer, SNRequire]
   ]
 
 qcProps :: TestTree
 qcProps = testGroup "Quickcheck properties"
-  [ testGroup "Right == fromArgs opt . toArgs opt"
+  [ testGroup "Right == fromDSV opt . toDSV opt"
     (variousOptions $ \opt ->
         variousTypes $ \p n -> QC.testProperty n (printAndParse opt p))
-  , testGroup
-    "id == rights . map (readDSV opt) . lines . unlines . map (showDSV opt)"
+  , testGroup "Right == fromDSVList opt . toDSVList opt"
     (variousOptions $ \opt ->
-        variousTypes $ \p n -> QC.testProperty n (printAndParseDSV opt p))
+        variousTypes $ \p n -> QC.testProperty n (printAndParseList opt p))
   ]
 
 main :: IO ()
-main = travisTestReporter defaultConfig [] qcProps
+main = defaultMain qcProps

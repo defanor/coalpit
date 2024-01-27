@@ -24,10 +24,10 @@ main = do
                   , fooBar = Just (Foo FooArgs { arg1 = 1
                                                , arg2 = "a string"})
                   , fooBar2 = Bar}
-      args = toArgs defOpt val
+      dsv = toDSV defOpt val
   print val
-  print args
-  print (fromArgs defOpt args :: Either String Input)
+  print dsv
+  print (fromDSV defOpt dsv :: Either String Input)
 
 data Test = Test { foo :: [Int], bar :: Maybe String }
   deriving (Show, Generic, Coalpit)
@@ -35,11 +35,9 @@ data Test = Test { foo :: [Int], bar :: Maybe String }
 help :: IO ()
 help = do
   mapM_ (\(o, x, y) -> print o >> putStrLn x >> putStrLn y) $
-    [ let opts = defOpt { alwaysUseSelName = ausn
-                        , omitNamedOptions = ono }
-      in ( (ausn, ono)
-         , showDSV opts (Test [1,2,3] vals)
+    [ let opts = defOpt { selNamePolicy = snpol }
+      in ( snpol
+         , toDSV opts (Test [1,2,3] vals)
          , usageString opts (Proxy :: Proxy Test))
-      | ausn <- [True, False]
-      , ono <- [True, False]
+      | snpol <- [SNDisable, SNAvoid, SNPrefer, SNRequire]
       , vals <- [Just "a string", Nothing]]

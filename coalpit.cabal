@@ -1,7 +1,7 @@
 name:                coalpit
-version:             0.1.1.1
-synopsis:            Command-line options and DSV parsing and printing
-description:         This library generates parsers and printers for
+version:             0.2.0.0
+synopsis:            DSV (de)serialization
+description:         The library generates parsers and printers for
                      given data types, in the form of command-line
                      arguments or DSVs – so that they can be used to
                      quickly get CLIs via a shared library, while
@@ -16,21 +16,17 @@ build-type:          Simple
 extra-source-files:  ChangeLog.md
                    , README.md
                    , examples/Basic.hs
-                   , examples/Pipes.hs
 cabal-version:       >=1.10
-tested-with:         GHC == 8.0.1, GHC == 8.0.2, GHC == 8.2.1, GHC == 8.2.2
+tested-with:         GHC == 8.0.1, GHC == 9.0.2
 bug-reports:         https://github.com/defanor/coalpit/issues
 source-repository head
   type:     git
-  location: https://git.uberspace.net/coalpit
+  location: https://github.com/defanor/coalpit
 
 library
   exposed-modules:     Coalpit
-                     , Coalpit.Core
-                     , Coalpit.DSV
-                     , Coalpit.Parsing
   build-depends:       base >= 4.9 && < 5
-                     , megaparsec >= 6.2 && < 7
+                     , parsec >= 3 && < 4
                      , scientific >= 0.3 && < 1
                      , time >= 1.6 && < 2
                      , network-uri >= 2.6 && < 3
@@ -45,7 +41,6 @@ test-suite test-coalpit
   build-depends:       base >= 4.9 && < 5
                      , coalpit
                      , generic-random >= 1 && < 2
-                     , tasty >= 0.12 && < 1
+                     , tasty >= 1 && < 2
                      , tasty-quickcheck >= 0.9 && < 1
-                     , tasty-travis >= 0.2 && < 1
   ghc-options:         -Wall -Wno-unused-top-binds
