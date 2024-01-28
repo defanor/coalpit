@@ -31,6 +31,11 @@ module Coalpit ( fromDSV
                , SelNamePolicy(..)
                , Options(..)
                , defOpt
+                 -- * Parsing and composition helpers
+               , escape
+               , pString
+               , pFieldSep
+               , pRecordSep
                ) where
 
 import GHC.Generics
@@ -133,6 +138,8 @@ fromDSVList :: Coalpit a => Options -> String -> Either String [a]
 fromDSVList opt str =
   parseDSV (coalpitParser opt `sepEndBy` pRecordSep opt) str
 
+-- | Enquote and escape a string, if it contains any characters that
+-- need it.
 escape :: Options -> String -> String
 escape opt str
   | not (null str) &&
@@ -189,16 +196,20 @@ usageToString (UProduct u1 u2) = usageToString u1 ++ " " ++ usageToString u2
 usageToString UUnit = ""
 usageToString (UType t) = t
 
+-- | Parse a field separator.
 pFieldSep :: Options -> Parsec String m ()
 pFieldSep opt =
   oneOf (NE.toList $ fieldSeparators opt) *> pure ()
 
+-- | Parse a record (line) separator.
 pRecordSep :: Options -> Parsec String m ()
 pRecordSep opt =
   choice (eof
           : map (\c -> char c *> pure ())
            (NE.toList $ recordSeparators opt))
 
+-- | Parse a token: either a quoted string or a string without
+-- unescaped separators. The opposite of 'escape'.
 pString :: Options -> Parsec String m String
 pString opt =
   (try (quotedString <?> "quoted string"))
